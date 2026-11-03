@@ -130,6 +130,15 @@ async function fetchMonitors() {
   return all;
 }
 
+// 値を含めず、項目名と型だけを文字列にする。公開ログに出してよい形にするため
+function describeShape(v, depth = 0) {
+  if (v === null) return 'null';
+  if (Array.isArray(v)) return v.length ? `[${v.length}件 ${describeShape(v[0], depth + 1)}]` : '[0件]';
+  if (typeof v !== 'object') return typeof v;
+  if (depth >= 3) return 'object';
+  return `{${Object.entries(v).map(([k, x]) => `${k}: ${describeShape(x, depth + 1)}`).join(', ')}}`;
+}
+
 function normalizeUrl(u) {
   if (!u) return null;
   try {
@@ -210,6 +219,8 @@ async function buildData() {
   try {
     monitors = await fetchMonitors();
     log(`UptimeRobot の監視 ${monitors.length} 件を読みました`);
+    const noRatio = monitors.find((m) => uptimeRatio24h(m) === null);
+    if (noRatio) warn(`稼働率を取れない監視があります。応答の形: ${describeShape(noRatio)}`);
   } catch (e) {
     warn(`UptimeRobot の取得に失敗したので、死活はすべて「未監視」にします: ${e.message}`);
   }
