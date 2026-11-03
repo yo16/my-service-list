@@ -1,0 +1,112 @@
+{
+  "generatedAt": "2026-11-03T06:00:00Z",
+  "services": [
+    {
+      "id": 1,
+      "name": "Sample Notes",
+      "description": "メモを書いて共有するだけの小さなアプリ（サンプル）",
+      "stage": "released",
+      "url": "https://notes.example.com/",
+      "repo": {
+        "fullName": "example/sample-notes",
+        "url": "https://github.com/example/sample-notes",
+        "private": false,
+        "archived": false,
+        "pushedAt": "2026-10-31T09:12:00Z",
+        "latestRelease": { "tag": "v1.4.0", "publishedAt": "2026-09-20T00:00:00Z" }
+      },
+      "tags": ["nextjs", "supabase", "vercel"],
+      "releasedOn": "2025-04-01",
+      "uptime": { "monitorId": 800000001, "status": "UP", "ratio24h": 100, "lastIncidentAt": "2026-08-02T03:10:00Z" },
+      "note": null
+    },
+    {
+      "id": 2,
+      "name": "Sample Timer",
+      "description": "ポモドーロタイマー（サンプル）",
+      "stage": "released",
+      "url": "https://timer.example.com/",
+      "repo": {
+        "fullName": "example/sample-timer",
+        "url": "https://github.com/example/sample-timer",
+        "private": false,
+        "archived": false,
+        "pushedAt": "2026-06-14T12:00:00Z",
+        "latestRelease": null
+      },
+      "tags": ["astro", "cloudflare-pages"],
+      "releasedOn": "2024-11-15",
+      "uptime": { "monitorId": 800000002, "status": "DOWN", "ratio24h": 62.5, "lastIncidentAt": "2026-11-03T01:40:00Z" },
+      "note": "DNS の設定を見直す予定。"
+    },
+    {
+      "id": 3,
+      "name": "Sample Dashboard",
+      "description": "家計の集計を見るダッシュボード（サンプル）",
+      "stage": "developing",
+      "url": null,
+      "repo": {
+        "fullName": "example/sample-dashboard",
+        "url": "https://github.com/example/sample-dashboard",
+        "private": true,
+        "archived": false,
+        "pushedAt": "2026-11-03T02:30:00Z",
+        "latestRelease": null
+      },
+      "tags": ["sveltekit", "supabase", "cloudflare-workers", "drizzle", "tailwind"],
+      "releasedOn": null,
+      "uptime": null,
+      "note": null
+    },
+    {
+      "id": 4,
+      "name": "Sample Bot",
+      "description": "Slack に天気を流す bot（サンプル）",
+      "stage": "paused",
+      "url": "https://bot.example.com/",
+      "repo": {
+        "fullName": "example/sample-bot",
+        "url": "https://github.com/example/sample-bot",
+        "private": false,
+        "archived": false,
+        "pushedAt": "2025-12-01T08:00:00Z",
+        "latestRelease": { "tag": "v0.3.1", "publishedAt": "2025-10-10T00:00:00Z" }
+      },
+      "tags": ["python", "fly-io"],
+      "releasedOn": "2025-06-30",
+      "uptime": { "monitorId": 800000004, "status": "PAUSED", "ratio24h": null, "lastIncidentAt": null },
+      "note": null
+    },
+    {
+      "id": 5,
+      "name": "Sample Legacy",
+      "description": "最初に作った掲示板（サンプル）",
+      "stage": "retired",
+      "url": null,
+      "repo": {
+        "fullName": "example/sample-legacy",
+        "url": "https://github.com/example/sample-legacy",
+        "private": false,
+        "archived": true,
+        "pushedAt": "2021-03-05T10:00:00Z",
+        "latestRelease": null
+      },
+      "tags": ["rails", "heroku"],
+      "releasedOn": "2019-01-20",
+      "uptime": null,
+      "note": "Heroku の無料枠の終了にあわせて停止。"
+    },
+    {
+      "id": 6,
+      "name": "Sample Idea",
+      "description": "読書記録を共有するサービスの構想（サンプル）",
+      "stage": "planning",
+      "url": null,
+      "repo": null,
+      "tags": [],
+      "releasedOn": null,
+      "uptime": null,
+      "note": "まだリポジトリはない。"
+    }
+  ]
+}

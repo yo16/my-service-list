@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="color-scheme" content="light dark">
+  <title>My Services</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap">
+      <h1>My Services</h1>
+      <p class="meta" id="meta" aria-live="polite"></p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section id="unlock" class="unlock" hidden>
+      <form id="unlock-form" novalidate>
+        <label for="passphrase">パスフレーズ</label>
+        <input id="passphrase" type="password" autocomplete="current-password" required autofocus>
+        <label class="check">
+          <input type="checkbox" id="remember"> このブラウザで記憶する
+        </label>
+        <button type="submit" class="primary">開く</button>
+        <p id="unlock-error" class="error" role="alert"></p>
+      </form>
+    </section>
+
+    <div id="banner" class="banner" hidden></div>
+    <p id="fatal" class="error" role="alert" hidden></p>
+
+    <section id="app" hidden>
+      <div class="filters">
+        <input id="search" type="search" placeholder="名前、説明、タグで検索" aria-label="検索">
+        <div class="toggle-group" id="stage-filter" role="group" aria-label="段階"></div>
+        <div class="chip-group" id="tag-filter" role="group" aria-label="技術タグ"></div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="services">
+          <thead>
+            <tr>
+              <th class="col-id"><button type="button" class="sort" data-sort="id">No.</button></th>
+              <th class="col-up"><span class="visually-hidden">死活</span></th>
+              <th class="col-name">サービス</th>
+              <th class="col-stage">段階</th>
+              <th class="col-tags">技術</th>
+              <th class="col-date"><button type="button" class="sort" data-sort="releasedOn">公開日</button></th>
+              <th class="col-date"><button type="button" class="sort" data-sort="pushedAt">最終更新</button></th>
+              <th class="col-links"><span class="visually-hidden">リンク</span></th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <p id="empty" class="empty" hidden>条件に合うサービスはありません。</p>
+
+      <footer class="legend">
+        <span><i class="dot dot-up"></i>稼働中</span>
+        <span><i class="dot dot-down"></i>停止</span>
+        <span><i class="dot dot-idle"></i>一時停止・確認中</span>
+        <span><i class="dot dot-none"></i>未監視</span>
+        <button type="button" id="lock" class="link-button">パスフレーズを忘れる</button>
+      </footer>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
