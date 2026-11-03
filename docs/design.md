@@ -97,10 +97,9 @@ UptimeRobot API v3（`GET https://api.uptimerobot.com/v3/monitors?limit=200`、B
 |---|---|
 | `id`, `url`, `friendlyName` | `uptimerobot_monitor_id` または URL との照合 |
 | `status` | UP / DOWN / LOOKS_DOWN / PAUSED / STARTED |
-| `lastDayUptimes.histogram[].uptime` | 直近 24 時間の稼働率（平均） |
 | `lastIncident.startedAt` | 最後の障害の開始時刻 |
 
-一覧 API 1 回で全監視が取れるので、無料プランの 10 リクエスト/分に収まる。監視ごとの統計 API（`/monitors/{id}/stats/uptime`、最大 90 日）は件数ぶんのリクエストが必要なので、最初は使わない。
+直近 24 時間の稼働率は、サービスに結びついた監視についてだけ、統計 API（`GET /monitors/{id}/stats/uptime`）で 1 件ずつ取る。指定なしで直近 24 時間の `uptime`（0〜100 の百分率）が返る。監視一覧の `lastDayUptimes.histogram` は実際の応答では空だったので使わない。無料プランは 10 リクエスト/分なので、429 が返ったら `Retry-After` だけ待って 1 回やり直す。取れないときは警告を出し、稼働率なしで続ける。
 
 照合の規則: `uptimerobot_monitor_id` があればそれを使う。なければサービスの URL と監視の `url` を正規化（小文字のホスト、末尾のスラッシュを除く）して一致させる。どちらでも見つからなければ「未監視」とする。
 
@@ -255,5 +254,4 @@ UptimeRobot API v3（`GET https://api.uptimerobot.com/v3/monitors?limit=200`、B
 ## 8. 決めていないこと
 
 - 同期の間隔。1 時間で始め、短くしたければ cron を変える。GitHub Pages の配置は 1 時間あたり 10 回までの目安があるので、10 分未満にはしない。
-- UptimeRobot の `lastDayUptimes.histogram[].uptime` の単位（各区間の百分率と想定）。実装時に実データで確かめる。
-- 30 日や 90 日の稼働率。必要になったら監視ごとの統計 API を、レート制限に合わせて間隔を空けて呼ぶ。
+- 30 日や 90 日の稼働率。必要になったら統計 API に `from` と `to` を渡して取る（最大 90 日）。

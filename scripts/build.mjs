@@ -149,14 +149,29 @@ function normalizeUrl(u) {
   }
 }
 
-function uptimeRatio24h(monitor) {
-  const hist = monitor && monitor.lastDayUptimes && Array.isArray(monitor.lastDayUptimes.histogram)
-    ? monitor.lastDayUptimes.histogram
-    : [];
-  const values = hist.map((h) => Number(h.uptime)).filter((n) => Number.isFinite(n));
-  if (!values.length) return null;
-  const mean = values.reduce((a, b) => a + b, 0) / values.length;
-  return Math.round(mean * 100) / 100;
+// 直近 24 時間の稼働率（0〜100 の百分率）を監視ごとの統計 API で取る。
+// 監視一覧の lastDayUptimes.histogram は実際の応答では空だったので使わない。
+// 無料プランは 10 回/分なので、429 が返ったら Retry-After だけ待って 1 回やり直す。
+async function fetchUptimeRatio24h(monitorId) {
+  const key = env('UPTIMEROBOT_API_KEY');
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`${UR_BASE}/monitors/${monitorId}/stats/uptime`, {
+      headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' },
+    });
+    if (res.status === 429 && attempt === 0) {
+      const waitSec = Math.min(Number(res.headers.get('retry-after')) || 60, 70);
+      log(`UptimeRobot のレート制限に達したので ${waitSec} 秒待ちます`);
+      await new Promise((r) => setTimeout(r, waitSec * 1000));
+      continue;
+    }
+    if (!res.ok) throw new Error(`応答が ${res.status}`);
+    const body = await res.json();
+    const ratio = Number(body.uptime);
+    if (body.uptime === null || body.uptime === undefined || !Number.isFinite(ratio)) {
+      throw new Error(`uptime がありません。応答の形: ${describeShape(body)}`);
+    }
+    return Math.round(ratio * 100) / 100;
+  }
 }
 
 function matchMonitor(row, monitors, serviceUrl) {
@@ -172,7 +187,7 @@ function matchMonitor(row, monitors, serviceUrl) {
 
 // ---------- 結合 ----------
 
-function buildService(row, repo, monitor) {
+function buildService(row, repo, monitor, ratio24h) {
   const url = row.url || (repo && repo.homepage) || null;
   return {
     id: row.id,
@@ -197,7 +212,7 @@ function buildService(row, repo, monitor) {
       ? {
         monitorId: monitor.id,
         status: monitor.status,
-        ratio24h: uptimeRatio24h(monitor),
+        ratio24h,
         lastIncidentAt: monitor.lastIncident && monitor.lastIncident.startedAt ? monitor.lastIncident.startedAt : null,
       }
       : null,
@@ -219,8 +234,6 @@ async function buildData() {
   try {
     monitors = await fetchMonitors();
     log(`UptimeRobot の監視 ${monitors.length} 件を読みました`);
-    const noRatio = monitors.find((m) => uptimeRatio24h(m) === null);
-    if (noRatio) warn(`稼働率を取れない監視があります。応答の形: ${describeShape(noRatio)}`);
   } catch (e) {
     warn(`UptimeRobot の取得に失敗したので、死活はすべて「未監視」にします: ${e.message}`);
   }
@@ -238,7 +251,15 @@ async function buildData() {
     }
     const url = row.url || (repo && repo.homepage) || null;
     const monitor = monitors.length ? matchMonitor(row, monitors, url) : null;
-    services.push(buildService(row, repo, monitor));
+    let ratio24h = null;
+    if (monitor) {
+      try {
+        ratio24h = await fetchUptimeRatio24h(monitor.id);
+      } catch (e) {
+        warn(`#${row.id}: 稼働率の取得に失敗しました: ${e.message}`);
+      }
+    }
+    services.push(buildService(row, repo, monitor, ratio24h));
   }
 
   return { generatedAt: new Date().toISOString(), services };
@@ -292,9 +313,10 @@ async function main() {
   const counts = {};
   for (const s of data.services) counts[s.stage] = (counts[s.stage] || 0) + 1;
   const monitored = data.services.filter((s) => s.uptime).length;
+  const withRatio = data.services.filter((s) => s.uptime && typeof s.uptime.ratio24h === 'number').length;
   const down = data.services.filter((s) => s.uptime && (s.uptime.status === 'DOWN' || s.uptime.status === 'LOOKS_DOWN')).length;
   const breakdown = Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(', ');
-  log(`dist/ に書き出しました: ${data.services.length} 件${breakdown ? `（${breakdown}）` : ''}、監視あり ${monitored} 件、停止 ${down} 件`);
+  log(`dist/ に書き出しました: ${data.services.length} 件${breakdown ? `（${breakdown}）` : ''}、監視あり ${monitored} 件、稼働率あり ${withRatio} 件、停止 ${down} 件`);
 }
 
 main().catch((e) => {
