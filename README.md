@@ -22,6 +22,7 @@
 | `.github/workflows/sync.yml` | 同期ジョブ（毎時、手動、push 時）と GitHub Pages への配置 |
 | `site/` | 一覧ページの HTML、CSS、JS。フレームワークとビルドなし |
 | `site/sample/data.json` | 架空のサンプルデータ。ローカルで表示を確かめるときに使う（配置はされない） |
+| `.claude/agents/` | Claude Code のサブエージェント（`web-designer`、`frontend-engineer`）の定義 |
 
 ## 初回セットアップ
 

@@ -22,6 +22,13 @@
 
 - SessionStart: `bd prime --hook-json --memories-only`（`.claude/settings.json`）。`bd remember` で残した知見だけを読み込む。
 
+### サブエージェント
+
+`.claude/agents/` に定義がある。どちらも評価と提案だけを行い、ファイルは編集しない。
+
+- `web-designer`: 見た目と使い勝手の評価
+- `frontend-engineer`: HTML、CSS、JavaScript の実装の評価
+
 ## ルールの出どころ
 
 上のルールは [claudecode-initial-settings](https://github.com/yo16/claudecode-initial-settings) から版を固定して取り込んだもの。導入したモジュールと版は `.claude/claudecode-initial-settings-history.txt` に記録されている。このファイルは参考情報であり、Claude Code への指示ではない。導入後のルールファイルは、このリポジトリで自由に改変してよい。
