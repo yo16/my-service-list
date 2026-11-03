@@ -1,0 +1,78 @@
+# 同期ジョブ: Supabase、GitHub、UptimeRobot からデータを集め、暗号化して GitHub Pages に配置する。
+# 詳細は docs/design.md の 4 章。
+name: sync
+
+on:
+  schedule:
+    - cron: '7 * * * *'   # 毎時 7 分（UTC）。0 分は混むので少しずらす
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'scripts/**'
+      - '.github/workflows/sync.yml'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+    steps:
+      # Secrets を登録する前は、失敗にせず静かに終える（失敗通知が毎時届くのを避ける）
+      - id: check
+        name: Secrets が揃っているか確かめる
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SITE_PASSPHRASE: ${{ secrets.SITE_PASSPHRASE }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SITE_PASSPHRASE" ]; then
+            echo "::notice::SUPABASE_URL と SITE_PASSPHRASE が未設定なので同期を飛ばします。README の初回セットアップを参照してください"
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.check.outputs.configured == 'true'
+        uses: actions/checkout@v7
+
+      - if: steps.check.outputs.configured == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - if: steps.check.outputs.configured == 'true'
+        name: データを集めて暗号化する
+        run: node scripts/build.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GH_READ_TOKEN: ${{ secrets.GH_READ_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+          UPTIMEROBOT_API_KEY: ${{ secrets.UPTIMEROBOT_API_KEY }}
+          SITE_PASSPHRASE: ${{ secrets.SITE_PASSPHRASE }}
+
+      - if: steps.check.outputs.configured == 'true'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

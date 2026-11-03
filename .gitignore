@@ -5,3 +5,6 @@
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
+
+# 同期ジョブの出力（暗号化前のデータを含むことがある）
+dist/
