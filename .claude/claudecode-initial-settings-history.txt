@@ -1,0 +1,5 @@
+# claudecode-initial-settings の導入記録。Claude Code への指示ではない。
+japanese@v1 2026-11-03
+git-autonomous@v1 2026-11-03
+beads@v2.0 2026-11-03
+handoff@v2.1 2026-11-03
