@@ -21,7 +21,7 @@
 
 ## 初回セットアップ
 
-1. **Supabase**: プロジェクトを作り、SQL Editor で `supabase/schema.sql` を実行する。Project Settings → API から URL と `service_role` キーを控える。
+1. **Supabase**: プロジェクトを作り、SQL Editor で `supabase/schema.sql` を実行する。URL は画面上部の「Connect」ボタンで開くダイアログに出る（`https://<プロジェクトの参照 ID>.supabase.co` の形）。キーは Settings → API Keys で控える。「Publishable and secret API keys」タブの secret key（`sb_secret_...`）でも、「Legacy API keys」タブの `service_role` キーでもよい。
 2. **UptimeRobot**: Integrations → API で読み取り専用（read-only）の API キーを作る。
 3. **GitHub の PAT**: Settings → Developer settings → Fine-grained tokens で、一覧に載せるリポジトリを選び、Metadata と Contents を Read にしたトークンを作る。公開リポジトリだけなら省略できる。
 4. **Secrets**: このリポジトリの Settings → Secrets and variables → Actions に次を登録する。
@@ -29,7 +29,7 @@
    | 名前 | 値 |
    |---|---|
    | `SUPABASE_URL` | Supabase プロジェクトの URL |
-   | `SUPABASE_SERVICE_ROLE_KEY` | `service_role` キー |
+   | `SUPABASE_SERVICE_ROLE_KEY` | Supabase の secret key（`sb_secret_...`）か、旧形式の `service_role` キー |
    | `UPTIMEROBOT_API_KEY` | UptimeRobot の読み取り専用キー（任意。なければ全件「未監視」） |
    | `GH_READ_TOKEN` | 手順 3 のトークン（任意） |
    | `SITE_PASSPHRASE` | 一覧ページを開くパスフレーズ。推測されにくい 20 文字以上にする |

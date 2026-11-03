@@ -11,7 +11,7 @@
  *   node scripts/build.mjs --plain    dist/data.json に暗号化前の JSON も書く（デバッグ用。dist/ はコミットしない）
  *
  * 環境変数:
- *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY   必須（--sample のときは不要）
+ *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY   必須（--sample のときは不要）。鍵は secret key（sb_secret_...）か旧形式の service_role キー
  *   SITE_PASSPHRASE                           必須
  *   GH_READ_TOKEN                             任意。なければ GITHUB_TOKEN、それもなければ無認証（公開リポジトリのみ、60 回/時）
  *   UPTIMEROBOT_API_KEY                       任意。なければ全件「未監視」
@@ -46,9 +46,11 @@ function env(name, { required = true } = {}) {
 async function fetchServices() {
   const base = env('SUPABASE_URL').replace(/\/+$/, '');
   const key = env('SUPABASE_SERVICE_ROLE_KEY');
-  const res = await fetch(`${base}/rest/v1/services?select=*&order=id.asc`, {
-    headers: { apikey: key, Authorization: `Bearer ${key}`, Accept: 'application/json' },
-  });
+  // 新形式の secret key（sb_secret_...）は JWT ではないので apikey ヘッダーだけで送る。
+  // 旧形式の service_role キー（JWT）は従来どおり Authorization にも付ける。
+  const headers = { apikey: key, Accept: 'application/json' };
+  if (!key.startsWith('sb_')) headers.Authorization = `Bearer ${key}`;
+  const res = await fetch(`${base}/rest/v1/services?select=*&order=id.asc`, { headers });
   if (!res.ok) throw new Error(`Supabase の読み取りに失敗しました: ${res.status} ${await res.text()}`);
   return res.json();
 }

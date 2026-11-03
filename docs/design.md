@@ -157,7 +157,7 @@ UptimeRobot API v3（`GET https://api.uptimerobot.com/v3/monitors?limit=200`、B
 | 名前 | 内容 |
 |---|---|
 | `SUPABASE_URL` | Supabase プロジェクトの URL |
-| `SUPABASE_SERVICE_ROLE_KEY` | service_role キー（RLS を通過する） |
+| `SUPABASE_SERVICE_ROLE_KEY` | secret key（`sb_secret_...`）か旧形式の service_role キー。どちらも RLS を通過する |
 | `GH_READ_TOKEN` | fine-grained PAT。対象リポジトリの Metadata と Contents の読み取り。非公開リポジトリを含めるために必要。公開リポジトリだけなら省略可（レート制限が 60 回/時になる） |
 | `UPTIMEROBOT_API_KEY` | UptimeRobot の読み取り専用（read-only）キー |
 | `SITE_PASSPHRASE` | 一覧ページを開くためのパスフレーズ |
