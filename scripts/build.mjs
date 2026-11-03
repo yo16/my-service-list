@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* my-service-list: 同期ジョブ
  *
- * Supabase の services を読み、GitHub API と UptimeRobot API v3 で派生データを付け、
+ * Supabase の services を読み、GitHub API（リポジトリ情報、Topics、使用言語、Release）と UptimeRobot API v3 で派生データを付け、
  * パスフレーズで暗号化した data.enc.json と site/ の中身を dist/ に書き出す。
  * Node 22 以上の標準機能だけで動く（fetch、crypto.subtle）。npm の依存はない。
  *
@@ -20,6 +20,7 @@
 import { cp, mkdir, rm, writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pickLanguages, mergeTags } from './lib/tags.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SITE_DIR = path.join(ROOT, 'site');
@@ -76,6 +77,7 @@ async function fetchRepo(fullName) {
   const repo = await ghGet(`/repos/${fullName}`);
   if (!repo) return null;
   const releases = (await ghGet(`/repos/${fullName}/releases?per_page=100`)) || [];
+  const languages = pickLanguages((await ghGet(`/repos/${fullName}/languages`)) || {});
   const published = releases
     .filter((r) => !r.draft && r.published_at)
     .sort((a, b) => a.published_at.localeCompare(b.published_at));
@@ -87,6 +89,7 @@ async function fetchRepo(fullName) {
     homepage: repo.homepage || null,
     description: repo.description || null,
     topics: Array.isArray(repo.topics) ? repo.topics : [],
+    languages,
     pushedAt: repo.pushed_at || null,
     archived: Boolean(repo.archived),
     private: Boolean(repo.private),
@@ -151,8 +154,6 @@ function matchMonitor(row, monitors, serviceUrl) {
 
 // ---------- 結合 ----------
 
-const uniq = (arr) => [...new Set(arr.filter(Boolean))];
-
 function buildService(row, repo, monitor) {
   const url = row.url || (repo && repo.homepage) || null;
   return {
@@ -171,7 +172,8 @@ function buildService(row, repo, monitor) {
         latestRelease: repo.latestRelease,
       }
       : null,
-    tags: uniq([...(repo ? repo.topics : []), ...(Array.isArray(row.tags) ? row.tags : [])]),
+    // Topics（手で付けた分類）→ 使用言語（自動）→ Supabase の tags（上書き・追加分）の順。重複は大文字小文字を無視して除く
+    tags: mergeTags(repo ? repo.topics : [], repo ? repo.languages : [], Array.isArray(row.tags) ? row.tags : []),
     releasedOn: row.released_on || (repo && repo.firstReleaseAt ? repo.firstReleaseAt.slice(0, 10) : null),
     uptime: monitor
       ? {
@@ -271,7 +273,8 @@ async function main() {
   for (const s of data.services) counts[s.stage] = (counts[s.stage] || 0) + 1;
   const monitored = data.services.filter((s) => s.uptime).length;
   const down = data.services.filter((s) => s.uptime && (s.uptime.status === 'DOWN' || s.uptime.status === 'LOOKS_DOWN')).length;
-  log(`dist/ に書き出しました: ${data.services.length} 件（${Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(', ')}）、監視あり ${monitored} 件、停止 ${down} 件`);
+  const breakdown = Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(', ');
+  log(`dist/ に書き出しました: ${data.services.length} 件${breakdown ? `（${breakdown}）` : ''}、監視あり ${monitored} 件、停止 ${down} 件`);
 }
 
 main().catch((e) => {

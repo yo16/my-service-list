@@ -31,7 +31,7 @@
 ┌─────────────────────────┐
 │ GitHub Actions（同期ジョブ）│  1 時間ごと + 手動 + push 時
 │  scripts/build.mjs       │
-│   ├ GitHub API   → リポジトリの URL、Topics、Release、最終 push、archived
+│   ├ GitHub API   → リポジトリの URL、Topics、使用言語、Release、最終 push、archived
 │   ├ UptimeRobot  → 死活、直近 24 時間の稼働率、最後の障害
 │   └ 結合して JSON を作り、パスフレーズで暗号化
 └───────────┬─────────────┘
@@ -62,28 +62,29 @@
 | `github_repo` | text | | `owner/repo` の形。設定すると GitHub から派生データを取る |
 | `url` | text | | サービスの URL。未設定なら GitHub の Website 欄（homepage）を使う |
 | `uptimerobot_monitor_id` | bigint | | UptimeRobot の monitor ID。未設定なら URL の一致で探す |
-| `tags` | text[] | | 技術タグの追加分。GitHub の Topics と結合して表示する |
+| `tags` | text[] | | 技術タグの追加分。GitHub の Topics、使用言語と結合して表示する |
 | `released_on` | date | | 公開日。未設定なら GitHub の最初の Release の日付を使う |
 | `note` | text | | 補足。展開したときだけ表示する |
 | `created_at` / `updated_at` | timestamptz | ○ | 作成日時、更新日時（自動） |
 
 設計上の判断:
 
-- **「未設定なら GitHub から」の列が多いのは意図的。** 各リポジトリ側の設定（Website、Topics、Release）を正とし、Supabase には上書きしたいときだけ値を入れる。README の自由文は解釈しない。
+- **「未設定なら GitHub から」の列が多いのは意図的。** 各リポジトリ側の設定と内容（Website、Topics、使用言語、Release）を正とし、Supabase には上書きしたいときだけ値を入れる。README の自由文は解釈しない。
 - **`stage` だけは手動。** 「開発中」と「公開中」の境目は機械的に判定できない。ただし GitHub で archived になっていれば、画面で「アーカイブ済み」の印を出す。
 - **`id` の変更不可**は、`generated always as identity` と、`id` の更新を拒否するトリガーの 2 段で守る。削除は可能だが、欠番はそのままにする（採番し直さない）。
 - RLS を有効にし、ポリシーは作らない。anon キーでは何も読めず、同期ジョブは service_role キーで読む。
 
 ### 3.2 派生データ（同期ジョブが毎回取る）
 
-GitHub API（`GET /repos/{owner}/{repo}`、`GET /repos/{owner}/{repo}/releases?per_page=100`）:
+GitHub API（`GET /repos/{owner}/{repo}`、`GET /repos/{owner}/{repo}/languages`、`GET /repos/{owner}/{repo}/releases?per_page=100`）:
 
 | 取る値 | 用途 |
 |---|---|
 | `html_url` | リポジトリへのリンク |
 | `homepage` | `url` の既定値 |
 | `description` | `description` の既定値 |
-| `topics` | 技術タグ（`tags` と結合、重複は除く） |
+| `topics` | 技術タグ。手で付けた分類（枠組み、サービス名など） |
+| `languages`（言語ごとのバイト数） | 技術タグ。全体の 5% 以上の言語を多い順に最大 5 件、小文字にして Topics の後ろに足す。HTML、CSS、Shell、Dockerfile などの補助的なものは除く。規則は `scripts/lib/tags.mjs` にある。結合の順は Topics → 使用言語 → Supabase の `tags` で、重複は大文字小文字を無視して除く |
 | `pushed_at` | 「最終更新」列 |
 | `archived`, `private` | アーカイブ済みの印、非公開リポジトリの印 |
 | Release の `published_at`（最古） | `released_on` の既定値 |
@@ -122,7 +123,7 @@ UptimeRobot API v3（`GET https://api.uptimerobot.com/v3/monitors?limit=200`、B
         "pushedAt": "2026-10-30T12:34:56Z",
         "latestRelease": { "tag": "v1.2.0", "publishedAt": "2026-09-01T00:00:00Z" }
       },
-      "tags": ["nextjs", "supabase", "vercel"],
+      "tags": ["nextjs", "supabase", "vercel", "typescript"],
       "releasedOn": "2025-04-01",
       "uptime": {
         "monitorId": 123456,
