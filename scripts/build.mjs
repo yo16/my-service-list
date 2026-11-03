@@ -33,6 +33,7 @@ const WRITE_PLAIN = args.has('--plain');
 
 const PBKDF2_ITERATIONS = 600000;
 
+// 公開リポジトリの Actions ログは誰でも読める。サービス名、URL、リポジトリ名はログに出さず、通し番号（#1 など）だけで示す。
 const log = (...a) => console.log('[sync]', ...a);
 const warn = (...a) => console.warn('[sync] 警告:', ...a);
 
@@ -69,7 +70,15 @@ async function ghGet(pathname) {
   if (GH_TOKEN) headers.Authorization = `Bearer ${GH_TOKEN}`;
   const res = await fetch(`https://api.github.com${pathname}`, { headers });
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`GitHub API ${pathname}: ${res.status} ${await res.text()}`);
+  if (!res.ok) {
+    let detail = '';
+    try {
+      detail = String(JSON.parse(await res.text()).message || '').slice(0, 120);
+    } catch {
+      /* 本文はログに出さない */
+    }
+    throw new Error(`GitHub API の応答が ${res.status}${detail ? `（${detail}）` : ''}`);
+  }
   return res.json();
 }
 
@@ -145,7 +154,7 @@ function matchMonitor(row, monitors, serviceUrl) {
   if (row.uptimerobot_monitor_id != null) {
     const byId = monitors.find((m) => String(m.id) === String(row.uptimerobot_monitor_id));
     if (byId) return byId;
-    warn(`#${row.id} ${row.name}: monitor ID ${row.uptimerobot_monitor_id} が UptimeRobot に見つかりません`);
+    warn(`#${row.id}: 指定した monitor ID が UptimeRobot に見つかりません`);
   }
   const target = normalizeUrl(serviceUrl);
   if (!target) return null;
@@ -211,9 +220,9 @@ async function buildData() {
     if (row.github_repo) {
       try {
         repo = await fetchRepo(row.github_repo);
-        if (!repo) warn(`#${row.id} ${row.name}: リポジトリ ${row.github_repo} が見つかりません（権限がないか、名前が違います）`);
+        if (!repo) warn(`#${row.id}: GitHub リポジトリが見つかりません（非公開なら GH_READ_TOKEN が必要です。名前も確かめてください）`);
       } catch (e) {
-        warn(`#${row.id} ${row.name}: GitHub の取得に失敗しました: ${e.message}`);
+        warn(`#${row.id}: GitHub の取得に失敗しました: ${e.message}`);
       }
     }
     const url = row.url || (repo && repo.homepage) || null;

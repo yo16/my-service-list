@@ -153,6 +153,7 @@ UptimeRobot API v3（`GET https://api.uptimerobot.com/v3/monitors?limit=200`、B
   4. `data.json` を組み立て、パスフレーズで暗号化して `dist/data.enc.json` に書く。`site/` の中身も `dist/` にコピーする。
   5. `actions/upload-pages-artifact` と `actions/deploy-pages` で配置する。
 - 失敗の扱い: Supabase が読めないときだけジョブを失敗させる（前回の配置が残る）。外部 API の一部失敗は配置を止めない。
+- ログの扱い: 公開リポジトリの Actions ログは誰でも読めるので、サービス名、URL、リポジトリ名をログに出さない。警告は通し番号（`#1` など）だけで示し、どのサービスかは登録画面で確かめる。
 
 ### Secrets
 
