@@ -7,59 +7,69 @@
   <meta name="color-scheme" content="light dark">
   <meta name="admin-token" content="__ADMIN_TOKEN__">
   <title>My Services 登録</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%232563eb'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="style.css">
   <style>
     /* 登録画面だけのスタイル。共通の見た目は style.css（一覧ページと同じもの）を使う */
     main.admin { padding-bottom: 48px; }
     .admin-grid { display: grid; gap: 20px; align-items: start; }
-    @media (min-width: 960px) { .admin-grid { grid-template-columns: minmax(0, 440px) minmax(0, 1fr); } }
+    .admin-grid > * { min-width: 0; }
+    /* 下の行で「編集」を押してもフォームが見えるように、左列を画面に留める */
+    @media (min-width: 960px) {
+      .admin-grid { grid-template-columns: minmax(0, 380px) minmax(0, 1fr); }
+      #form-card { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; }
+    }
     .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; }
     .card h2 { margin: 0 0 14px; font-size: 1.05rem; }
     .card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
     .card-head h2 { margin: 0; }
     .head-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-    .count { color: var(--muted); font-weight: 400; font-size: 0.9rem; }
+    .count { color: var(--muted); font-weight: 400; font-size: 0.87rem; }
     .field { display: grid; gap: 4px; margin-bottom: 14px; }
-    .field label { font-size: 0.88rem; color: var(--muted); }
-    .req { font-size: 0.72rem; color: var(--down); margin-left: 4px; font-weight: 600; }
+    .field label { font-size: 0.87rem; color: var(--muted); }
+    .req { font-size: 0.8rem; color: var(--down); margin-left: 4px; font-weight: 600; }
     .field input, .field select, .field textarea {
       width: 100%; padding: 9px 12px; font: inherit; color: var(--text);
-      background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
+      background: var(--input-bg); border: 1px solid var(--border-input); border-radius: 8px;
     }
     .field textarea { resize: vertical; }
     .field input:focus, .field select:focus, .field textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
     .hint { margin: 2px 0 0; font-size: 0.8rem; color: var(--muted); }
-    .preview { margin-top: 8px; padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; font-size: 0.86rem; }
+    .hint.is-error { color: var(--down); }
+    .preview { margin-top: 8px; padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; font-size: 0.87rem; }
     .preview.is-error { color: var(--down); }
     .preview .pv-title { font-weight: 600; }
     .preview dl { margin: 6px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; }
-    .preview dt { color: var(--muted); font-size: 0.78rem; }
+    .preview dt { color: var(--muted); font-size: 0.8rem; }
     .preview dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
     details.optional { margin: 2px 0 16px; }
-    details.optional summary { cursor: pointer; color: var(--muted); font-size: 0.88rem; margin-bottom: 10px; }
+    details.optional summary { cursor: pointer; color: var(--muted); font-size: 0.87rem; margin-bottom: 10px; }
     .actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
     .secondary { padding: 9px 14px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
     .secondary:hover { border-color: var(--accent); color: var(--accent); }
+    .emphasis { border-color: var(--accent); color: var(--accent); font-weight: 600; }
     button:disabled { opacity: 0.55; cursor: default; }
-    .msg { font-size: 0.88rem; color: var(--muted); margin: 0; }
-    .msg.ok { color: var(--ok); }
+    .msg { font-size: 0.87rem; color: var(--muted); margin: 0; }
+    .msg.ok { color: var(--ok-text); }
     .msg.err { color: var(--down); }
     .msg:empty { display: none; }
     .table-wrap { overflow-x: auto; }
-    table.admin-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-    .admin-table td.id { font-family: var(--mono); color: var(--muted); font-size: 0.85rem; white-space: nowrap; }
-    .admin-table td.repo { font-family: var(--mono); font-size: 0.82rem; overflow-wrap: anywhere; }
+    table.admin-table { width: 100%; border-collapse: collapse; }
+    .admin-table td.id { font-family: var(--mono); color: var(--muted); font-size: 0.87rem; white-space: nowrap; }
+    .admin-table td.repo { font-family: var(--mono); font-size: 0.87rem; }
+    .admin-table td.repo .none { color: var(--muted); }
     .admin-table td.when { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
     .admin-table td.act { text-align: right; white-space: nowrap; }
     .admin-table .name { cursor: default; }
     .admin-table .desc { white-space: normal; max-width: none; }
-    .edit { background: none; border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; cursor: pointer; font-size: 0.82rem; color: var(--muted); }
+    .edit { background: none; border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; cursor: pointer; font-size: 0.87rem; color: var(--muted); }
     .edit:hover { border-color: var(--accent); color: var(--accent); }
     tr.is-editing td { background: var(--accent-soft); }
-    /* style.css にあるスマホ幅の表ルール（thead を隠す等）を、この表では打ち消す */
+    /* スマホ幅では GitHub と更新の列を隠し、名前の列を確保する */
     @media (max-width: 719px) {
-      .admin-table thead { display: table-header-group; }
-      .admin-table tbody { display: table-row-group; }
+      .admin-table th:nth-child(4), .admin-table td.repo,
+      .admin-table th:nth-child(5), .admin-table td.when { display: none; }
+      .field input, .field select, .field textarea { font-size: 16px; } /* iOS Safari のフォーカス時の拡大を避ける */
     }
   </style>
 </head>
@@ -91,6 +101,7 @@
             <input id="f-repo" name="github_repo" list="repo-list" placeholder="owner/repo（入力すると候補が出ます）" autocomplete="off" spellcheck="false">
             <datalist id="repo-list"></datalist>
             <p class="hint">URL、説明、技術タグ、公開日は、このリポジトリから同期のときに取ります。手で入力する必要はありません。</p>
+            <p id="repo-list-msg" class="hint is-error" hidden></p>
             <div id="repo-preview" class="preview" hidden aria-live="polite"></div>
           </div>
           <details class="optional" id="optional">
@@ -114,7 +125,7 @@
           <h2 id="list-title">登録済み <span id="count" class="count"></span></h2>
           <div class="head-actions">
             <button type="button" class="secondary" id="reload">再読み込み</button>
-            <button type="button" class="secondary" id="sync">一覧ページに反映する</button>
+            <button type="button" class="secondary emphasis" id="sync">一覧ページに反映する</button>
           </div>
         </div>
         <p id="sync-msg" class="msg" role="status"></p>
@@ -180,7 +191,22 @@
 
     const stageLabel = (key) => (STAGES.find((s) => s.key === key) || { label: key }).label;
     const fmtNo = (id) => `#${String(id).padStart(3, '0')}`;
-    const fmtWhen = (iso) => (iso ? String(iso).slice(0, 10) : '');
+    const pad = (n) => String(n).padStart(2, '0');
+    // 一覧ページと同じく、手元の時刻で日付を出す
+    function fmtWhen(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return '';
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    }
+    // 外部由来の URL をリンクにするのは http と https だけ
+    function safeUrl(u) {
+      try {
+        return ['http:', 'https:'].includes(new URL(u).protocol) ? u : null;
+      } catch {
+        return null;
+      }
+    }
     function setMsg(node, text, kind) {
       node.textContent = text || '';
       node.className = `msg${kind ? ` ${kind}` : ''}`;
@@ -203,6 +229,11 @@
       return out;
     }
 
+    // 入力の途中で別の行の「編集」を押したときに、確認なしで消さないための基準
+    let formBaseline = '';
+    const markFormClean = () => { formBaseline = JSON.stringify(readForm()); };
+    const isFormDirty = () => JSON.stringify(readForm()) !== formBaseline;
+
     function clearEditingMark() {
       for (const tr of document.querySelectorAll('tr.is-editing')) tr.classList.remove('is-editing');
     }
@@ -217,9 +248,11 @@
       $('#optional').open = false;
       hidePreview();
       clearEditingMark();
+      markFormClean();
     }
 
     function startEdit(s) {
+      if (isFormDirty() && !window.confirm('入力中の内容を破棄して、この行の編集を始めますか？')) return;
       state.editingId = s.id;
       for (const k of FIELDS) field(k).value = s[k] === null || s[k] === undefined ? '' : String(s[k]);
       $('#form-title').textContent = `${fmtNo(s.id)} ${s.name} を編集する`;
@@ -231,6 +264,7 @@
       const tr = document.querySelector(`tr[data-id="${s.id}"]`);
       if (tr) tr.classList.add('is-editing');
       if (s.github_repo) loadPreview(s.github_repo); else hidePreview();
+      markFormClean();
       $('#form-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
       field('name').focus();
     }
@@ -246,6 +280,13 @@
         field('name').focus();
         return;
       }
+      // 日付が途中までだと value は空になる。そのまま送ると既存の公開日を消してしまう
+      if (field('released_on').validity.badInput) {
+        $('#optional').open = true;
+        setMsg(msg, '公開日を最後まで入力してください', 'err');
+        field('released_on').focus();
+        return;
+      }
       btn.disabled = true;
       setMsg(msg, wasEdit ? '更新しています…' : '登録しています…');
       try {
@@ -254,6 +295,7 @@
           : await api('POST', '/api/services', body);
         resetForm();
         await loadServices();
+        field('name').focus();
         setMsg(msg, `${fmtNo(saved.id)} ${saved.name} を${wasEdit ? '更新' : '登録'}しました。一覧ページに出すには「一覧ページに反映する」を押してください。`, 'ok');
       } catch (err) {
         setMsg(msg, err.message, 'err');
@@ -265,6 +307,7 @@
     $('#cancel').addEventListener('click', () => {
       resetForm();
       setMsg($('#form-msg'), '');
+      field('name').focus();
     });
 
     // ---------- GitHub の候補と情報 ----------
@@ -277,7 +320,9 @@
           label: r.description || (r.private ? '（非公開）' : null),
         })));
       } catch (err) {
-        console.warn('リポジトリ候補の取得に失敗:', err.message);
+        const note = $('#repo-list-msg');
+        note.textContent = `リポジトリの候補を取れませんでした。owner/repo を直接入力してください（${err.message}）`;
+        note.hidden = false;
       }
     }
 
@@ -289,7 +334,7 @@
     }
 
     function looksLikeRepo(v) {
-      return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(v) || /^https?:\/\/github\.com\/[^/]+\/[^/]+/i.test(v);
+      return /^\/*[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/*$/.test(v) || /^(https?:\/\/)?github\.com\/[^/]+\/[^/]+/i.test(v);
     }
 
     async function loadPreview(value) {
@@ -310,7 +355,7 @@
           el('dl', {},
             el('dt', { text: '説明' }), el('dd', { text: r.description || '（なし）' }),
             el('dt', { text: 'Website' }), el('dd', {},
-              r.homepage
+              safeUrl(r.homepage)
                 ? el('a', { href: r.homepage, target: '_blank', rel: 'noopener', text: r.homepage })
                 : '（なし。GitHub の About で Website を設定するか、下の任意の項目で URL を入れる）'),
             el('dt', { text: '技術' }), el('dd', {},
@@ -329,8 +374,8 @@
     field('github_repo').addEventListener('input', () => {
       clearTimeout(previewTimer);
       const v = field('github_repo').value.trim();
-      if (!v) { hidePreview(); return; }
-      if (!looksLikeRepo(v)) return;
+      // 前のリポジトリの表示や、遅れて届く応答を残さない
+      if (!v || !looksLikeRepo(v)) { state.previewSeq++; hidePreview(); return; }
       previewTimer = setTimeout(() => loadPreview(v), 500);
     });
     field('github_repo').addEventListener('change', () => {
@@ -352,6 +397,12 @@
       }
     }
 
+    // 長い名前は owner/ の直後で折り返す
+    function repoLabel(fullName) {
+      const [owner, ...rest] = fullName.split('/');
+      return el('span', {}, `${owner}/`, el('wbr'), rest.join('/'));
+    }
+
     function renderServices() {
       const rows = state.services;
       $('#count').textContent = rows.length ? `${rows.length} 件` : '';
@@ -360,7 +411,7 @@
         el('td', { class: 'id', text: fmtNo(s.id) }),
         el('td', {}, el('span', { class: 'name', text: s.name }), s.description ? el('span', { class: 'desc', text: s.description }) : null),
         el('td', {}, el('span', { class: `badge badge-${s.stage}`, text: stageLabel(s.stage) })),
-        el('td', { class: 'repo', text: s.github_repo || '' }),
+        el('td', { class: 'repo' }, s.github_repo ? repoLabel(s.github_repo) : el('span', { class: 'none', text: '—' })),
         el('td', { class: 'when', text: fmtWhen(s.updated_at) }),
         el('td', { class: 'act' }, el('button', { type: 'button', class: 'edit', text: '編集', onclick: () => startEdit(s) })),
       )));
@@ -381,11 +432,11 @@
       return run.status === 'queued' ? '同期ジョブは待機中です…' : '同期ジョブを実行中です…';
     }
 
-    async function pollSync(startedAt, tries) {
+    async function pollSync(previousRun, tries) {
       const msg = $('#sync-msg');
       try {
         const run = await api('GET', '/api/sync/status');
-        const fresh = run && new Date(run.createdAt).getTime() >= startedAt - 60000;
+        const fresh = run && (!previousRun || run.createdAt !== previousRun.createdAt);
         if (!fresh) {
           setMsg(msg, '同期ジョブの開始を待っています…');
         } else {
@@ -404,7 +455,7 @@
         $('#sync').disabled = false;
         return;
       }
-      syncTimer = setTimeout(() => pollSync(startedAt, tries - 1), 8000);
+      syncTimer = setTimeout(() => pollSync(previousRun, tries - 1), 8000);
     }
 
     $('#sync').addEventListener('click', async () => {
@@ -414,9 +465,10 @@
       clearTimeout(syncTimer);
       setMsg(msg, '同期ジョブを起動しています…');
       try {
+        const previousRun = await api('GET', '/api/sync/status');
         await api('POST', '/api/sync', {});
         setMsg(msg, '同期ジョブを起動しました。1〜2 分で一覧ページに反映されます。');
-        syncTimer = setTimeout(() => pollSync(Date.now(), 25), 6000);
+        syncTimer = setTimeout(() => pollSync(previousRun, 25), 6000);
       } catch (err) {
         setMsg(msg, err.message, 'err');
         btn.disabled = false;
@@ -427,6 +479,7 @@
 
     async function init() {
       fillStages();
+      markFormClean();
       try {
         const cfg = await api('GET', '/api/config');
         $('#meta').textContent = `Supabase: ${cfg.supabaseHost}　GitHub: ${cfg.githubAuth}`;

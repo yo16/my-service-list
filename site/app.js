@@ -58,7 +58,7 @@
     svg.setAttribute('aria-hidden', 'true');
     const paths = kind === 'site'
       ? ['M14 4h6v6', 'M20 4l-9 9', 'M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5']
-      : ['M8 3v4a1 1 0 0 1-1 1H3', 'M16 3v4a1 1 0 0 0 1 1h4', 'M3 8v8a1 1 0 0 0 1 1h4', 'M21 8v8a1 1 0 0 1-1 1h-4', 'M8 21v-4a4 4 0 0 1 8 0v4'];
+      : ['M8 7l-5 5 5 5', 'M16 7l5 5-5 5', 'M14 4l-4 16'];
     for (const d of paths) {
       const p = document.createElementNS(ns, 'path');
       p.setAttribute('d', d);
@@ -67,12 +67,23 @@
     return svg;
   }
 
+  // 外部由来の URL をリンクにするのは http と https だけ
+  function safeUrl(u) {
+    if (!u) return null;
+    try {
+      return ['http:', 'https:'].includes(new URL(u).protocol) ? u : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // ---------- 日付 ----------
 
   const pad = (n) => String(n).padStart(2, '0');
 
   function fmtDate(iso) {
     if (!iso) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso; // 日付だけの値は UTC に解釈させない
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return null;
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -95,7 +106,7 @@
     if (days < 30) return `${days} 日前`;
     const months = Math.floor(days / 30);
     if (months < 12) return `${months} か月前`;
-    return `${Math.floor(days / 365)} 年前`;
+    return `${Math.max(1, Math.floor(days / 365))} 年前`;
   }
 
   // ---------- 復号 ----------
@@ -128,43 +139,70 @@
 
   // ---------- 読み込み ----------
 
+  // 404 と、それ以外の失敗（通信エラー、5xx、JSON でない）を呼び出し側で分けられるように返す
   async function fetchJson(path) {
     try {
       const res = await fetch(path, { cache: 'no-store' });
-      if (!res.ok) return null;
-      return await res.json();
+      if (res.status === 404) return { notFound: true };
+      if (!res.ok) return { failed: true };
+      return { json: await res.json() };
     } catch (_) {
-      return null;
+      return { failed: true };
     }
   }
 
-  async function main() {
-    const enc = await fetchJson('data.enc.json');
-    if (enc && enc.ct) {
-      const remembered = storage('get');
-      if (remembered) {
-        try {
-          show(await decrypt(enc, remembered));
-          return;
-        } catch (_) {
-          storage('del');
-        }
-      }
-      showUnlock(enc);
-      return;
-    }
-    const sample = await fetchJson('sample/data.json');
-    if (sample) {
-      const banner = $('#banner');
-      banner.textContent = 'サンプルデータを表示しています（data.enc.json がありません）';
-      banner.hidden = false;
-      $('#lock').hidden = true;
-      show(sample);
-      return;
-    }
+  function showFatal(message) {
     const fatal = $('#fatal');
-    fatal.textContent = 'データが見つかりません。同期ジョブが実行されているか確認してください。';
+    fatal.textContent = message;
     fatal.hidden = false;
+  }
+
+  // 鍵が違うと AES-GCM の復号は OperationError になる。それ以外はパスフレーズの問題ではない
+  const isWrongPassphrase = (e) => e && e.name === 'OperationError';
+
+  async function openData(enc, passphrase) {
+    const data = await decrypt(enc, passphrase);
+    if (!data || !Array.isArray(data.services)) throw new Error('データの形が想定と違います');
+    return data;
+  }
+
+  async function main() {
+    const res = await fetchJson('data.enc.json');
+    try {
+      if (res.json && res.json.ct) {
+        const remembered = storage('get');
+        if (remembered) {
+          try {
+            show(await openData(res.json, remembered));
+            return;
+          } catch (e) {
+            if (!isWrongPassphrase(e)) {
+              showFatal(`データを読めません: ${e.message}`);
+              return;
+            }
+            storage('del');
+          }
+        }
+        showUnlock(res.json);
+        return;
+      }
+      if (!res.notFound) {
+        showFatal('データの読み込みに失敗しました。時間をおいて再読み込みしてください。');
+        return;
+      }
+      // サンプルは Pages に配置されないので、ここに来るのはローカルで確かめているときだけ
+      const sample = await fetchJson('sample/data.json');
+      if (sample.json) {
+        const banner = $('#banner');
+        banner.textContent = 'サンプルデータを表示しています（data.enc.json がありません）';
+        banner.hidden = false;
+        show(sample.json);
+        return;
+      }
+      showFatal('データが見つかりません。同期ジョブが実行されているか確認してください。');
+    } finally {
+      $('#loading').hidden = true;
+    }
   }
 
   function showUnlock(enc) {
@@ -172,6 +210,7 @@
     const form = $('#unlock-form');
     const input = $('#passphrase');
     const error = $('#unlock-error');
+    const submit = form.querySelector('button');
     section.hidden = false;
     input.focus();
     form.addEventListener('submit', async (e) => {
@@ -179,18 +218,24 @@
       error.textContent = '';
       const pass = input.value;
       if (!pass) { error.textContent = 'パスフレーズを入力してください'; return; }
-      form.querySelector('button').disabled = true;
+      submit.disabled = true;
+      submit.textContent = '確かめています…';
+      let data;
       try {
-        const data = await decrypt(enc, pass);
-        if ($('#remember').checked) storage('set', pass);
-        section.hidden = true;
-        show(data);
-      } catch (_) {
-        error.textContent = 'パスフレーズが違います';
+        data = await openData(enc, pass);
+      } catch (err) {
+        error.textContent = isWrongPassphrase(err) ? 'パスフレーズが違います' : `データを読めません: ${err.message}`;
         input.select();
+        return;
       } finally {
-        form.querySelector('button').disabled = false;
+        submit.disabled = false;
+        submit.textContent = '開く';
       }
+      if ($('#remember').checked) storage('set', pass);
+      input.value = '';
+      section.hidden = true;
+      show(data);
+      $('#app').focus();
     });
   }
 
@@ -202,9 +247,18 @@
     renderMeta();
     renderStageFilter();
     renderTagFilter();
+    renderLegend();
     bindControls();
     renderRows();
   }
+
+  function renderLegend() {
+    $('#legend-site').replaceChildren(svgIcon('site'), 'サイト');
+    $('#legend-repo').replaceChildren(svgIcon('repo'), 'リポジトリ');
+    $('#lock').hidden = !storage('get');
+  }
+
+  const isDown = (s) => Boolean(s.uptime) && (s.uptime.status === 'DOWN' || s.uptime.status === 'LOOKS_DOWN');
 
   function renderMeta() {
     const meta = $('#meta');
@@ -214,15 +268,15 @@
     let down = 0;
     for (const s of services) {
       counts[s.stage] = (counts[s.stage] || 0) + 1;
-      if (s.uptime && (s.uptime.status === 'DOWN' || s.uptime.status === 'LOOKS_DOWN')) down++;
+      if (isDown(s)) down++;
     }
     const parts = [];
+    if (down) parts.push(el('span', { class: 'down-count', text: `停止中 ${down}` }));
     const when = fmtDateTime(state.data.generatedAt);
     if (when) parts.push(el('span', { text: `更新 ${when}` }));
     for (const s of STAGES) {
       if (counts[s.key]) parts.push(el('span', { text: `${s.label} ${counts[s.key]}` }));
     }
-    if (down) parts.push(el('span', { class: 'down-count', text: `停止 ${down}` }));
     parts.forEach((p, i) => {
       if (i) meta.append(el('span', { class: 'sep', text: '・' }));
       meta.append(p);
@@ -253,8 +307,9 @@
     group.replaceChildren();
     const freq = new Map();
     for (const s of state.data.services) for (const t of s.tags || []) freq.set(t, (freq.get(t) || 0) + 1);
+    $('#tag-details').hidden = !freq.size;
+    updateTagSummary();
     if (!freq.size) return;
-    group.append(el('span', { class: 'group-label', text: 'タグ' }));
     const sorted = [...freq.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
     for (const [tag, n] of sorted) {
       const btn = el('button', {
@@ -264,6 +319,7 @@
         onclick: () => {
           if (state.tags.has(tag)) state.tags.delete(tag); else state.tags.add(tag);
           btn.setAttribute('aria-pressed', String(state.tags.has(tag)));
+          updateTagSummary();
           renderRows();
         },
       }, [tag, el('span', { class: 'count', text: String(n) })]);
@@ -271,10 +327,34 @@
     }
   }
 
+  // 畳んでいても、選んでいるタグが分かるようにする
+  function updateTagSummary() {
+    $('#tag-summary').textContent = state.tags.size ? `選択中: ${[...state.tags].join(', ')}` : '';
+  }
+
+  const isFiltered = () => state.query !== ''
+    || state.tags.size > 0
+    || state.stages.size !== DEFAULT_STAGES.length
+    || DEFAULT_STAGES.some((k) => !state.stages.has(k));
+
+  function clearFilters() {
+    state.query = '';
+    state.stages = new Set(DEFAULT_STAGES);
+    state.tags = new Set();
+    $('#search').value = '';
+    renderStageFilter();
+    renderTagFilter();
+    renderRows();
+    $('#search').focus();
+  }
+
   let controlsBound = false;
   function bindControls() {
     if (controlsBound) return;
     controlsBound = true;
+    // タグが多くなるので、狭い画面では最初は畳む
+    $('#tag-details').open = window.matchMedia('(min-width: 720px)').matches;
+    $('#clear-filters').addEventListener('click', clearFilters);
     $('#search').addEventListener('input', (e) => {
       state.query = e.target.value.trim().toLowerCase();
       renderRows();
@@ -324,12 +404,22 @@
 
   function renderRows() {
     for (const btn of document.querySelectorAll('button.sort')) {
-      if (btn.dataset.sort === state.sort.key) btn.dataset.dir = state.sort.dir; else delete btn.dataset.dir;
+      const th = btn.closest('th');
+      if (btn.dataset.sort === state.sort.key) {
+        btn.dataset.dir = state.sort.dir;
+        th.setAttribute('aria-sort', state.sort.dir === 'asc' ? 'ascending' : 'descending');
+      } else {
+        delete btn.dataset.dir;
+        th.removeAttribute('aria-sort');
+      }
     }
     const tbody = $('#rows');
     tbody.replaceChildren();
     const rows = state.data.services.filter(matches).sort(compare);
     $('#empty').hidden = rows.length > 0;
+    $('.table-wrap').hidden = rows.length === 0;
+    $('#result-count').textContent = `${rows.length} / ${state.data.services.length} 件を表示`;
+    $('#clear-filters').hidden = !isFiltered();
     for (const s of rows) {
       tbody.append(renderRow(s));
       if (state.expanded.has(s.id)) tbody.append(renderDetail(s));
@@ -366,7 +456,8 @@
     return wrap;
   }
 
-  function iconLink(kind, href, label) {
+  function iconLink(kind, rawHref, label) {
+    const href = safeUrl(rawHref);
     if (!href) return el('span', { class: 'icon-link disabled', 'aria-hidden': 'true' }, svgIcon(kind));
     return el('a', {
       class: 'icon-link', href, target: '_blank', rel: 'noopener', title: label, 'aria-label': label,
@@ -375,21 +466,31 @@
   }
 
   function renderRow(s) {
+    // 全体を描き直すとボタンのフォーカスが失われるので、詳細の行だけを足し引きする
     const toggle = () => {
-      if (state.expanded.has(s.id)) state.expanded.delete(s.id); else state.expanded.add(s.id);
-      renderRows();
+      const open = !state.expanded.has(s.id);
+      if (open) {
+        state.expanded.add(s.id);
+        tr.after(renderDetail(s));
+      } else {
+        state.expanded.delete(s.id);
+        tr.nextElementSibling.remove();
+      }
+      nameBtn.setAttribute('aria-expanded', String(open));
     };
-    const expanded = state.expanded.has(s.id);
-    const tr = el('tr', { class: `row${s.stage === 'retired' ? ' is-retired' : ''}`, onclick: toggle });
+    const rowClass = ['row', s.stage === 'retired' ? 'is-retired' : null, isDown(s) ? 'is-down' : null].filter(Boolean).join(' ');
+    const tr = el('tr', { class: rowClass, onclick: toggle });
 
     tr.append(el('td', { class: 'id', text: `#${String(s.id).padStart(3, '0')}` }));
     tr.append(el('td', { class: 'up' }, uptimeDot(s)));
 
     const nameBtn = el('button', {
-      type: 'button', class: 'name', text: s.name, 'aria-expanded': String(expanded),
+      type: 'button', class: 'name', text: s.name, 'aria-expanded': String(state.expanded.has(s.id)),
       onclick: (e) => { e.stopPropagation(); toggle(); },
     });
     const nameCell = el('td', { class: 'name-cell' }, nameBtn);
+    // 点の色とツールチップに頼らず、停止は文字でも出す
+    if (isDown(s)) nameCell.append(el('span', { class: 'down-flag', text: STATUS_LABEL[s.uptime.status] }));
     if (s.description) nameCell.append(el('span', { class: 'desc', text: s.description }));
     tr.append(nameCell);
 
@@ -432,11 +533,12 @@
 
     const r = s.repo;
     if (r) {
+      const releaseDate = r.latestRelease && fmtDate(r.latestRelease.publishedAt);
       const latest = r.latestRelease
-        ? `${r.latestRelease.tag}（${fmtDate(r.latestRelease.publishedAt)}）`
+        ? `${r.latestRelease.tag}${releaseDate ? `（${releaseDate}）` : ''}`
         : 'なし';
       grid.append(dl([
-        ['リポジトリ', el('a', { href: r.url, target: '_blank', rel: 'noopener', text: r.fullName })],
+        ['リポジトリ', safeUrl(r.url) ? el('a', { href: r.url, target: '_blank', rel: 'noopener', text: r.fullName }) : r.fullName],
         ['最新リリース', latest],
         ['最終 push', fmtDateTime(r.pushedAt)],
         ['状態', [r.private ? '非公開' : '公開', r.archived ? 'アーカイブ済み' : null].filter(Boolean).join(' ・ ')],
@@ -448,7 +550,7 @@
     const u = s.uptime;
     if (u) {
       grid.append(dl([
-        ['死活', STATUS_LABEL[u.status] || u.status],
+        ['死活', isDown(s) ? el('span', { class: 'down-text', text: STATUS_LABEL[u.status] }) : (STATUS_LABEL[u.status] || u.status)],
         ['24 時間の稼働率', typeof u.ratio24h === 'number' ? `${u.ratio24h.toFixed(2)}%` : null],
         ['最後の障害', u.lastIncidentAt ? fmtDateTime(u.lastIncidentAt) : 'なし'],
         ['monitor ID', u.monitorId != null ? String(u.monitorId) : null],
@@ -458,7 +560,7 @@
     }
 
     grid.append(dl([
-      ['URL', s.url ? el('a', { href: s.url, target: '_blank', rel: 'noopener', text: s.url }) : '未設定'],
+      ['URL', safeUrl(s.url) ? el('a', { href: s.url, target: '_blank', rel: 'noopener', text: s.url }) : (s.url || '未設定')],
       ['公開日', fmtDate(s.releasedOn)],
       ['技術', (s.tags && s.tags.length) ? tagList(s.tags) : null],
     ]));
