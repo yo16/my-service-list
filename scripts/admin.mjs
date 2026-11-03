@@ -109,9 +109,25 @@ async function supabase(method, pathname, body) {
 
 function normalizeRepo(v) {
   if (!v) return '';
-  const m = v.match(/^https?:\/\/github\.com\/([^/\s]+)\/([^/\s#?]+)/i);
+  const m = v.match(/^(?:https?:\/\/)?github\.com\/([^/\s]+)\/([^/\s#?]+)/i);
   if (m) return `${m[1]}/${m[2].replace(/\.git$/, '')}`;
-  return v.replace(/^\/+|\/+$/g, '');
+  return v.replace(/^\/+|\/+$/g, '').replace(/\.git$/, '');
+}
+
+function isHttpUrl(v) {
+  try {
+    const u = new URL(v);
+    return (u.protocol === 'http:' || u.protocol === 'https:') && Boolean(u.hostname) && !/\s/.test(v);
+  } catch {
+    return false;
+  }
+}
+
+// 2025-02-30 のように、形は合っていても実在しない日付を弾く
+function isRealDate(v) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const d = new Date(`${v}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
 }
 
 function validateService(input, { partial = false } = {}) {
@@ -139,14 +155,14 @@ function validateService(input, { partial = false } = {}) {
   }
   if (has('url')) {
     const v = str('url');
-    if (v && !/^https?:\/\//i.test(v)) throw new HttpError(400, 'URL は http:// か https:// で始めてください');
+    if (v && !isHttpUrl(v)) throw new HttpError(400, 'URL は http:// か https:// で始まる正しい形で入力してください');
     out.url = v || null;
   }
   if (has('description')) out.description = str('description') || null;
   if (has('note')) out.note = str('note') || null;
   if (has('released_on')) {
     const v = str('released_on');
-    if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new HttpError(400, '公開日は YYYY-MM-DD の形で入力してください');
+    if (v && !isRealDate(v)) throw new HttpError(400, '公開日は実在する日付を YYYY-MM-DD の形で入力してください');
     out.released_on = v || null;
   }
   if (has('uptimerobot_monitor_id')) {
@@ -285,6 +301,7 @@ function send(res, status, body, type = 'application/json; charset=utf-8') {
     'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'no-referrer',
+    'Content-Security-Policy': "frame-ancestors 'none'",
   });
   res.end(data);
 }
@@ -307,15 +324,20 @@ async function readJson(req) {
 }
 
 // 同じ PC の他のサイトやプログラムから API を叩かれないようにする（DNS rebinding、別サイトからのフォーム送信）
-function checkCaller(req) {
+function checkHost(req) {
   const host = req.headers.host || '';
   if (host !== `${HOST}:${PORT}` && host !== `localhost:${PORT}`) throw new HttpError(403, 'Host が一致しません');
+}
+
+function checkToken(req) {
   if (req.headers['x-admin-token'] !== TOKEN) throw new HttpError(403, 'トークンが一致しません。画面を読み込み直してください');
 }
 
 async function route(req, res) {
   const url = new URL(req.url, `http://${HOST}:${PORT}`);
   const p = url.pathname;
+
+  checkHost(req); // トークン入りの HTML も、API と同じく Host を確かめてから返す
 
   if (req.method === 'GET' && p === '/') {
     const html = (await readFile(ADMIN_HTML, 'utf8')).replace('__ADMIN_TOKEN__', TOKEN);
@@ -326,7 +348,7 @@ async function route(req, res) {
   }
   if (!p.startsWith('/api/')) throw new HttpError(404, 'Not Found');
 
-  checkCaller(req);
+  checkToken(req);
 
   if (req.method === 'GET' && p === '/api/config') {
     return send(res, 200, { supabaseHost: new URL(env('SUPABASE_URL')).host, githubAuth: ghAuth.source, stages: STAGES });
