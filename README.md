@@ -2,8 +2,8 @@
 
 作ったウェブサービスのマスタ管理と状態管理。通し番号、開発段階、技術タグ、公開日、死活状況を 1 つの表で見る。
 
-- マスタは Supabase の `services` テーブルに置き、Table Editor で編集する。
-- GitHub Actions の同期ジョブが毎時、GitHub API（リポジトリの URL、Topics、Release、最終 push）と UptimeRobot API v3（死活、24 時間の稼働率）を取り、結合した JSON をパスフレーズで暗号化して GitHub Pages に配置する。
+- マスタは Supabase の `services` テーブルに置く。追加と編集は、自分の PC で動かす登録画面（`node scripts/admin.mjs`）で行う。
+- GitHub Actions の同期ジョブが毎時、GitHub API（リポジトリの URL、Topics、使用言語、Release、最終 push）と UptimeRobot API v3（死活、24 時間の稼働率）を取り、結合した JSON をパスフレーズで暗号化して GitHub Pages に配置する。
 - 一覧ページ（https://yo16.github.io/my-service-list/）はパスフレーズを入力すると復号して表を出す。ログインの仕組みは持たない。
 
 設計の詳細は [docs/design.md](docs/design.md) にある。
@@ -15,6 +15,10 @@
 | `docs/design.md` | 設計書 |
 | `supabase/schema.sql` | `services` テーブルの定義。Supabase の SQL Editor で実行する |
 | `scripts/build.mjs` | 同期スクリプト。Node 22 以上、依存ライブラリなし |
+| `scripts/lib/tags.mjs` | 技術タグの決め方（GitHub の Topics と使用言語の結合） |
+| `scripts/admin.mjs` | ローカルの登録画面のサーバー。Node 22 以上、依存ライブラリなし |
+| `admin/index.html` | 登録画面の HTML。`scripts/admin.mjs` が配信する。Pages には配置されない |
+| `.env.example` | 登録画面が読む `.env` の見本 |
 | `.github/workflows/sync.yml` | 同期ジョブ（毎時、手動、push 時）と GitHub Pages への配置 |
 | `site/` | 一覧ページの HTML、CSS、JS。フレームワークとビルドなし |
 | `site/sample/data.json` | 架空のサンプルデータ。ローカルで表示を確かめるときに使う（配置はされない） |
@@ -41,14 +45,44 @@
 
 Secrets を登録するまで、同期ジョブは失敗にならず何もせずに終わる。
 
-## サービスを 1 件追加する
+## サービスを登録する
 
-1. Supabase の Table Editor で `services` に行を足す。最低限 `name`、`stage`、`github_repo`（`owner/repo` の形）。
-2. 対象リポジトリの GitHub 設定（About の歯車）で Website に URL、Topics に技術タグを入れる。Supabase の `url` と `tags` は、これを上書きしたいときだけ使う。
-3. 公開中なら UptimeRobot に同じ URL の監視を足す。URL で自動的に照合される。照合がうまくいかないときは `uptimerobot_monitor_id` に monitor ID を入れる。
-4. 次の同期（最長 1 時間）で表に出る。すぐ見たいときは `sync` を手動実行する。
+登録は、自分の PC で動かす登録画面から行う。Supabase の画面を直接さわる必要はない。
 
-`stage` の値は `planning`（企画）、`developing`（開発中）、`released`（公開中）、`paused`（休止）、`retired`（終了）。
+### 初回だけ: `.env` を用意する
+
+登録画面は、Supabase に接続するための URL と鍵を、リポジトリ直下の `.env` というファイルから読む。
+
+1. リポジトリ直下に `.env` という名前のファイルを作る。すでにあれば、そのファイルを開く。
+2. 次の 2 行を追記する。値は「初回セットアップ」の手順 1 で控えたものと同じ。
+
+   ```
+   SUPABASE_URL=https://xxxxxxxxxxxx.supabase.co
+   SUPABASE_SERVICE_ROLE_KEY=sb_secret_xxxxxxxx
+   ```
+
+3. 保存する。`.env` は `.gitignore` に入っているのでコミットされない。見本は `.env.example` にある。
+
+### 1 件登録する
+
+1. リポジトリのフォルダで次を実行する。ブラウザで `http://127.0.0.1:8787/` が開く。開かなければ、この URL を自分で開く。
+
+   ```
+   node scripts/admin.mjs
+   ```
+
+2. サービス名を入れる。
+3. 段階を選ぶ。企画、開発中、公開中、休止、終了のどれか。
+4. GitHub リポジトリを `owner/repo` の形で入れる。文字を打つと自分のリポジトリの候補が出る。入れると、そのリポジトリから取れる説明、Website、技術がその場に表示される。技術タグは入力しない。GitHub の Topics と使用言語から、同期のときに決まる。
+5. 「登録する」を押す。登録済みの一覧に通し番号つきで並ぶ。
+6. 「一覧ページに反映する」を押す。同期ジョブが動き、1〜2 分で一覧ページに出る。押さなくても、次の定時同期（最長 1 時間）で出る。
+7. 終わったら、コマンドを実行した画面で Ctrl+C を押して止める。
+
+### 登録したあとに
+
+- 段階を変えるときや項目を直すときは、登録画面の一覧で「編集」を押し、直して「更新する」を押す。
+- GitHub 側で About の Website にサービスの URL を入れると、一覧のリンクと UptimeRobot の照合に使われる。Topics に枠組みやサービス名（例: nextjs、supabase）を入れると技術タグに加わる。
+- 公開中のサービスは、UptimeRobot に同じ URL の監視を足すと死活が表に出る。URL で自動的に照合される。照合できないときは、編集画面の「任意の項目」にある UptimeRobot の monitor ID を入れる。
 
 ## ローカルで確かめる
 
@@ -72,4 +106,5 @@ python -m http.server 8766 --directory dist
 - 公開リポジトリなので、サービス名や URL を含むデータはコミットしない。マスタは Supabase にだけ置き、配置されるのは暗号化済みのファイルだけ。
 - 暗号化済みファイルは誰でも取得できるため、安全性はパスフレーズの長さに依存する。
 - GitHub は、リポジトリに 60 日間 push がないと schedule の実行を止める。止まったら Actions の画面で有効にし直す。
+- 登録画面は自分の PC の中（127.0.0.1）だけで待ち受ける。Supabase の鍵は `.env` にだけ置き、ブラウザには渡さない。
 - Supabase の鍵は、旧形式の `service_role` キー（Settings → API Keys の「Legacy API keys」タブ）でも動くが、旧形式は 2026 年末に廃止予定なので secret key を使う。

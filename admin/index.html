@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="color-scheme" content="light dark">
+  <meta name="admin-token" content="__ADMIN_TOKEN__">
+  <title>My Services 登録</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    /* 登録画面だけのスタイル。共通の見た目は style.css（一覧ページと同じもの）を使う */
+    main.admin { padding-bottom: 48px; }
+    .admin-grid { display: grid; gap: 20px; align-items: start; }
+    @media (min-width: 960px) { .admin-grid { grid-template-columns: minmax(0, 440px) minmax(0, 1fr); } }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; }
+    .card h2 { margin: 0 0 14px; font-size: 1.05rem; }
+    .card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+    .card-head h2 { margin: 0; }
+    .head-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .count { color: var(--muted); font-weight: 400; font-size: 0.9rem; }
+    .field { display: grid; gap: 4px; margin-bottom: 14px; }
+    .field label { font-size: 0.88rem; color: var(--muted); }
+    .req { font-size: 0.72rem; color: var(--down); margin-left: 4px; font-weight: 600; }
+    .field input, .field select, .field textarea {
+      width: 100%; padding: 9px 12px; font: inherit; color: var(--text);
+      background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
+    }
+    .field textarea { resize: vertical; }
+    .field input:focus, .field select:focus, .field textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+    .hint { margin: 2px 0 0; font-size: 0.8rem; color: var(--muted); }
+    .preview { margin-top: 8px; padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; font-size: 0.86rem; }
+    .preview.is-error { color: var(--down); }
+    .preview .pv-title { font-weight: 600; }
+    .preview dl { margin: 6px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; }
+    .preview dt { color: var(--muted); font-size: 0.78rem; }
+    .preview dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+    details.optional { margin: 2px 0 16px; }
+    details.optional summary { cursor: pointer; color: var(--muted); font-size: 0.88rem; margin-bottom: 10px; }
+    .actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .secondary { padding: 9px 14px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
+    .secondary:hover { border-color: var(--accent); color: var(--accent); }
+    button:disabled { opacity: 0.55; cursor: default; }
+    .msg { font-size: 0.88rem; color: var(--muted); margin: 0; }
+    .msg.ok { color: var(--ok); }
+    .msg.err { color: var(--down); }
+    .msg:empty { display: none; }
+    .table-wrap { overflow-x: auto; }
+    table.admin-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    .admin-table td.id { font-family: var(--mono); color: var(--muted); font-size: 0.85rem; white-space: nowrap; }
+    .admin-table td.repo { font-family: var(--mono); font-size: 0.82rem; overflow-wrap: anywhere; }
+    .admin-table td.when { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
+    .admin-table td.act { text-align: right; white-space: nowrap; }
+    .admin-table .name { cursor: default; }
+    .admin-table .desc { white-space: normal; max-width: none; }
+    .edit { background: none; border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; cursor: pointer; font-size: 0.82rem; color: var(--muted); }
+    .edit:hover { border-color: var(--accent); color: var(--accent); }
+    tr.is-editing td { background: var(--accent-soft); }
+    /* style.css にあるスマホ幅の表ルール（thead を隠す等）を、この表では打ち消す */
+    @media (max-width: 719px) {
+      .admin-table thead { display: table-header-group; }
+      .admin-table tbody { display: table-row-group; }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap">
+      <h1>My Services 登録</h1>
+      <p class="meta" id="meta" aria-live="polite">読み込み中…</p>
+    </div>
+  </header>
+
+  <main class="wrap admin">
+    <p id="fatal" class="error" role="alert" hidden></p>
+
+    <div class="admin-grid">
+      <section class="card" id="form-card" aria-labelledby="form-title">
+        <h2 id="form-title">サービスを登録する</h2>
+        <form id="service-form" novalidate>
+          <div class="field">
+            <label for="f-name">サービス名 <span class="req">必須</span></label>
+            <input id="f-name" name="name" type="text" maxlength="200" autocomplete="off" required>
+          </div>
+          <div class="field">
+            <label for="f-stage">段階</label>
+            <select id="f-stage" name="stage"></select>
+          </div>
+          <div class="field">
+            <label for="f-repo">GitHub リポジトリ</label>
+            <input id="f-repo" name="github_repo" list="repo-list" placeholder="owner/repo（入力すると候補が出ます）" autocomplete="off" spellcheck="false">
+            <datalist id="repo-list"></datalist>
+            <p class="hint">URL、説明、技術タグ、公開日は、このリポジトリから同期のときに取ります。手で入力する必要はありません。</p>
+            <div id="repo-preview" class="preview" hidden aria-live="polite"></div>
+          </div>
+          <details class="optional" id="optional">
+            <summary>任意の項目（GitHub から取れる値を上書きしたいときだけ）</summary>
+            <div class="field"><label for="f-url">URL</label><input id="f-url" name="url" type="url" placeholder="https://"></div>
+            <div class="field"><label for="f-description">説明</label><input id="f-description" name="description" type="text" maxlength="300"></div>
+            <div class="field"><label for="f-released">公開日</label><input id="f-released" name="released_on" type="date"></div>
+            <div class="field"><label for="f-monitor">UptimeRobot の monitor ID</label><input id="f-monitor" name="uptimerobot_monitor_id" type="text" inputmode="numeric" placeholder="URL で照合できないときだけ"></div>
+            <div class="field"><label for="f-note">補足</label><textarea id="f-note" name="note" rows="3"></textarea></div>
+          </details>
+          <div class="actions">
+            <button type="submit" class="primary" id="submit">登録する</button>
+            <button type="button" class="secondary" id="cancel" hidden>編集をやめる</button>
+            <p id="form-msg" class="msg" role="status"></p>
+          </div>
+        </form>
+      </section>
+
+      <section class="card" aria-labelledby="list-title">
+        <div class="card-head">
+          <h2 id="list-title">登録済み <span id="count" class="count"></span></h2>
+          <div class="head-actions">
+            <button type="button" class="secondary" id="reload">再読み込み</button>
+            <button type="button" class="secondary" id="sync">一覧ページに反映する</button>
+          </div>
+        </div>
+        <p id="sync-msg" class="msg" role="status"></p>
+        <div class="table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>No.</th>
+                <th>サービス</th>
+                <th>段階</th>
+                <th>GitHub</th>
+                <th>更新</th>
+                <th><span class="visually-hidden">操作</span></th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+        <p id="empty" class="empty" hidden>まだ登録がありません。フォームから 1 件目を登録してください。</p>
+      </section>
+    </div>
+  </main>
+
+  <script>
+  (() => {
+    'use strict';
+    const TOKEN = document.querySelector('meta[name="admin-token"]').content;
+    const STAGES = [
+      { key: 'planning', label: '企画' },
+      { key: 'developing', label: '開発中' },
+      { key: 'released', label: '公開中' },
+      { key: 'paused', label: '休止' },
+      { key: 'retired', label: '終了' },
+    ];
+    const FIELDS = ['name', 'stage', 'github_repo', 'url', 'description', 'released_on', 'uptimerobot_monitor_id', 'note'];
+    const OPTIONAL = ['url', 'description', 'released_on', 'uptimerobot_monitor_id', 'note'];
+    const $ = (s) => document.querySelector(s);
+    const state = { services: [], editingId: null, previewSeq: 0 };
+
+    function el(tag, attrs = {}, ...children) {
+      const node = document.createElement(tag);
+      for (const [k, v] of Object.entries(attrs)) {
+        if (v === null || v === undefined || v === false) continue;
+        if (k === 'text') node.textContent = v;
+        else if (k === 'class') node.className = v;
+        else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
+        else node.setAttribute(k, v === true ? '' : v);
+      }
+      for (const c of children) if (c !== null && c !== undefined) node.append(c);
+      return node;
+    }
+
+    async function api(method, path, body) {
+      const headers = { 'X-Admin-Token': TOKEN };
+      if (body !== undefined) headers['Content-Type'] = 'application/json';
+      const res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+      const text = await res.text();
+      let data = null;
+      try { data = text ? JSON.parse(text) : null; } catch { data = { error: text }; }
+      if (!res.ok) throw new Error((data && data.error) || `${res.status} ${res.statusText}`);
+      return data;
+    }
+
+    const stageLabel = (key) => (STAGES.find((s) => s.key === key) || { label: key }).label;
+    const fmtNo = (id) => `#${String(id).padStart(3, '0')}`;
+    const fmtWhen = (iso) => (iso ? String(iso).slice(0, 10) : '');
+    function setMsg(node, text, kind) {
+      node.textContent = text || '';
+      node.className = `msg${kind ? ` ${kind}` : ''}`;
+    }
+
+    // ---------- フォーム ----------
+
+    const form = $('#service-form');
+    const field = (name) => form.elements[name];
+
+    function fillStages() {
+      const sel = field('stage');
+      sel.replaceChildren(...STAGES.map((s) => el('option', { value: s.key, text: s.label })));
+      sel.value = 'planning';
+    }
+
+    function readForm() {
+      const out = {};
+      for (const k of FIELDS) out[k] = field(k).value;
+      return out;
+    }
+
+    function clearEditingMark() {
+      for (const tr of document.querySelectorAll('tr.is-editing')) tr.classList.remove('is-editing');
+    }
+
+    function resetForm() {
+      form.reset();
+      field('stage').value = 'planning';
+      state.editingId = null;
+      $('#form-title').textContent = 'サービスを登録する';
+      $('#submit').textContent = '登録する';
+      $('#cancel').hidden = true;
+      $('#optional').open = false;
+      hidePreview();
+      clearEditingMark();
+    }
+
+    function startEdit(s) {
+      state.editingId = s.id;
+      for (const k of FIELDS) field(k).value = s[k] === null || s[k] === undefined ? '' : String(s[k]);
+      $('#form-title').textContent = `${fmtNo(s.id)} ${s.name} を編集する`;
+      $('#submit').textContent = '更新する';
+      $('#cancel').hidden = false;
+      $('#optional').open = OPTIONAL.some((k) => s[k]);
+      setMsg($('#form-msg'), '');
+      clearEditingMark();
+      const tr = document.querySelector(`tr[data-id="${s.id}"]`);
+      if (tr) tr.classList.add('is-editing');
+      if (s.github_repo) loadPreview(s.github_repo); else hidePreview();
+      $('#form-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      field('name').focus();
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = $('#form-msg');
+      const btn = $('#submit');
+      const body = readForm();
+      const wasEdit = Boolean(state.editingId);
+      if (!body.name.trim()) {
+        setMsg(msg, 'サービス名を入力してください', 'err');
+        field('name').focus();
+        return;
+      }
+      btn.disabled = true;
+      setMsg(msg, wasEdit ? '更新しています…' : '登録しています…');
+      try {
+        const saved = wasEdit
+          ? await api('PATCH', `/api/services/${state.editingId}`, body)
+          : await api('POST', '/api/services', body);
+        resetForm();
+        await loadServices();
+        setMsg(msg, `${fmtNo(saved.id)} ${saved.name} を${wasEdit ? '更新' : '登録'}しました。一覧ページに出すには「一覧ページに反映する」を押してください。`, 'ok');
+      } catch (err) {
+        setMsg(msg, err.message, 'err');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    $('#cancel').addEventListener('click', () => {
+      resetForm();
+      setMsg($('#form-msg'), '');
+    });
+
+    // ---------- GitHub の候補と情報 ----------
+
+    async function loadRepoList() {
+      try {
+        const repos = await api('GET', '/api/github/repos');
+        $('#repo-list').replaceChildren(...repos.map((r) => el('option', {
+          value: r.fullName,
+          label: r.description || (r.private ? '（非公開）' : null),
+        })));
+      } catch (err) {
+        console.warn('リポジトリ候補の取得に失敗:', err.message);
+      }
+    }
+
+    const preview = $('#repo-preview');
+    function hidePreview() {
+      preview.hidden = true;
+      preview.replaceChildren();
+      preview.classList.remove('is-error');
+    }
+
+    function looksLikeRepo(v) {
+      return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(v) || /^https?:\/\/github\.com\/[^/]+\/[^/]+/i.test(v);
+    }
+
+    async function loadPreview(value) {
+      const seq = ++state.previewSeq;
+      preview.hidden = false;
+      preview.classList.remove('is-error');
+      preview.replaceChildren(el('span', { class: 'pv-title', text: 'GitHub を確認しています…' }));
+      try {
+        const r = await api('GET', `/api/github/repo?full_name=${encodeURIComponent(value)}`);
+        if (seq !== state.previewSeq) return;
+        const tags = [...r.topics, ...r.languages];
+        const flags = [r.private ? '非公開' : null, r.archived ? 'アーカイブ済み' : null].filter(Boolean);
+        preview.replaceChildren(
+          el('div', {},
+            el('a', { class: 'pv-title', href: r.url, target: '_blank', rel: 'noopener', text: r.fullName }),
+            flags.length ? el('span', { class: 'flag', text: flags.join('・') }) : null,
+          ),
+          el('dl', {},
+            el('dt', { text: '説明' }), el('dd', { text: r.description || '（なし）' }),
+            el('dt', { text: 'Website' }), el('dd', {},
+              r.homepage
+                ? el('a', { href: r.homepage, target: '_blank', rel: 'noopener', text: r.homepage })
+                : '（なし。GitHub の About で Website を設定するか、下の任意の項目で URL を入れる）'),
+            el('dt', { text: '技術' }), el('dd', {},
+              tags.length ? el('div', { class: 'tags' }, ...tags.map((t) => el('span', { class: 'tag', text: t }))) : '（なし）'),
+            el('dt', { text: '最終 push' }), el('dd', { text: fmtWhen(r.pushedAt) || '（なし）' }),
+          ),
+        );
+      } catch (err) {
+        if (seq !== state.previewSeq) return;
+        preview.classList.add('is-error');
+        preview.replaceChildren(el('span', { text: err.message }));
+      }
+    }
+
+    let previewTimer = null;
+    field('github_repo').addEventListener('input', () => {
+      clearTimeout(previewTimer);
+      const v = field('github_repo').value.trim();
+      if (!v) { hidePreview(); return; }
+      if (!looksLikeRepo(v)) return;
+      previewTimer = setTimeout(() => loadPreview(v), 500);
+    });
+    field('github_repo').addEventListener('change', () => {
+      clearTimeout(previewTimer);
+      const v = field('github_repo').value.trim();
+      if (v && looksLikeRepo(v)) loadPreview(v);
+    });
+
+    // ---------- 一覧 ----------
+
+    async function loadServices() {
+      try {
+        state.services = await api('GET', '/api/services');
+        renderServices();
+        $('#fatal').hidden = true;
+      } catch (err) {
+        $('#fatal').textContent = `Supabase から読み込めません: ${err.message}`;
+        $('#fatal').hidden = false;
+      }
+    }
+
+    function renderServices() {
+      const rows = state.services;
+      $('#count').textContent = rows.length ? `${rows.length} 件` : '';
+      $('#empty').hidden = rows.length > 0;
+      $('#rows').replaceChildren(...rows.map((s) => el('tr', { 'data-id': s.id, class: state.editingId === s.id ? 'is-editing' : null },
+        el('td', { class: 'id', text: fmtNo(s.id) }),
+        el('td', {}, el('span', { class: 'name', text: s.name }), s.description ? el('span', { class: 'desc', text: s.description }) : null),
+        el('td', {}, el('span', { class: `badge badge-${s.stage}`, text: stageLabel(s.stage) })),
+        el('td', { class: 'repo', text: s.github_repo || '' }),
+        el('td', { class: 'when', text: fmtWhen(s.updated_at) }),
+        el('td', { class: 'act' }, el('button', { type: 'button', class: 'edit', text: '編集', onclick: () => startEdit(s) })),
+      )));
+    }
+
+    $('#reload').addEventListener('click', loadServices);
+
+    // ---------- 同期（GitHub Actions の起動） ----------
+
+    let syncTimer = null;
+
+    function describeRun(run) {
+      if (run.status === 'completed') {
+        return run.conclusion === 'success'
+          ? '同期が完了しました。一覧ページを再読み込みすると反映されています。'
+          : `同期が失敗しました（${run.conclusion}）。`;
+      }
+      return run.status === 'queued' ? '同期ジョブは待機中です…' : '同期ジョブを実行中です…';
+    }
+
+    async function pollSync(startedAt, tries) {
+      const msg = $('#sync-msg');
+      try {
+        const run = await api('GET', '/api/sync/status');
+        const fresh = run && new Date(run.createdAt).getTime() >= startedAt - 60000;
+        if (!fresh) {
+          setMsg(msg, '同期ジョブの開始を待っています…');
+        } else {
+          const done = run.status === 'completed';
+          setMsg(msg, describeRun(run), done ? (run.conclusion === 'success' ? 'ok' : 'err') : '');
+          msg.append(' ', el('a', { href: run.url, target: '_blank', rel: 'noopener', text: '実行ログ' }));
+          if (done) { $('#sync').disabled = false; return; }
+        }
+      } catch (err) {
+        setMsg(msg, `状態の取得に失敗しました: ${err.message}`, 'err');
+        $('#sync').disabled = false;
+        return;
+      }
+      if (tries <= 0) {
+        setMsg(msg, '時間内に終わりませんでした。GitHub の Actions の画面で確認してください。', 'err');
+        $('#sync').disabled = false;
+        return;
+      }
+      syncTimer = setTimeout(() => pollSync(startedAt, tries - 1), 8000);
+    }
+
+    $('#sync').addEventListener('click', async () => {
+      const btn = $('#sync');
+      const msg = $('#sync-msg');
+      btn.disabled = true;
+      clearTimeout(syncTimer);
+      setMsg(msg, '同期ジョブを起動しています…');
+      try {
+        await api('POST', '/api/sync', {});
+        setMsg(msg, '同期ジョブを起動しました。1〜2 分で一覧ページに反映されます。');
+        syncTimer = setTimeout(() => pollSync(Date.now(), 25), 6000);
+      } catch (err) {
+        setMsg(msg, err.message, 'err');
+        btn.disabled = false;
+      }
+    });
+
+    // ---------- 起動 ----------
+
+    async function init() {
+      fillStages();
+      try {
+        const cfg = await api('GET', '/api/config');
+        $('#meta').textContent = `Supabase: ${cfg.supabaseHost}　GitHub: ${cfg.githubAuth}`;
+      } catch (err) {
+        $('#meta').textContent = '';
+        $('#fatal').textContent = `サーバーに接続できません: ${err.message}`;
+        $('#fatal').hidden = false;
+        return;
+      }
+      await loadServices();
+      loadRepoList();
+    }
+
+    init();
+  })();
+  </script>
+</body>
+</html>

@@ -24,7 +24,7 @@
 
 ```
 ┌─────────────────────────┐
-│ Supabase（マスタ）        │  services テーブル。人が Table Editor で編集する
+│ Supabase（マスタ）        │  services テーブル。ローカルの登録画面（scripts/admin.mjs）で編集する
 └───────────┬─────────────┘
             │ 読む（service_role キー）
             ▼
@@ -43,7 +43,8 @@
 └─────────────────────────┘
 ```
 
-- ブラウザは Supabase、GitHub、UptimeRobot のどれにも直接アクセスしない。鍵はすべて GitHub Actions の Secrets に置く。
+- 一覧ページのブラウザは Supabase、GitHub、UptimeRobot のどれにも直接アクセスしない。鍵は GitHub Actions の Secrets と、登録画面を動かす PC の `.env` にだけ置く。
+- マスタの追加と編集は、自分の PC で動かす登録画面（6.3）で行う。Supabase の鍵はその PC のサーバー側で使うだけで、ブラウザには渡さない。
 - 公開リポジトリなので、サービス名を含むデータは **コミットしない**。同期ジョブが生成した暗号化済み JSON を Pages のアーティファクトとして配置するだけにする。
 - 同期ジョブの結果を Supabase に書き戻さない。Supabase は人が編集するマスタだけを持ち、派生データは毎回作り直す。
 
@@ -220,6 +221,18 @@ UptimeRobot API v3（`GET https://api.uptimerobot.com/v3/monitors?limit=200`、B
 - **配色**: ライトとダークに `prefers-color-scheme` で追従する。死活の色は色覚多様性に配慮し、赤と緑に加えて形（点と輪）とツールチップの文字でも区別する。
 - **鍵の画面**: 復号前は表の代わりにパスフレーズの入力欄だけを出す。
 
+### 6.3 登録画面（ローカル）
+
+マスタの追加と編集は、Supabase の Table Editor ではなく、自分の PC で動かす登録画面で行う。
+
+- 起動: `node scripts/admin.mjs`。`http://127.0.0.1:8787/` で `admin/index.html` を配信し、ブラウザを開く。Node 22 以上の標準機能だけで動き、npm の依存はない。
+- 設定: リポジトリ直下の `.env` から `SUPABASE_URL` と `SUPABASE_SERVICE_ROLE_KEY` を読む（`.env.example` を参照）。`.env` はコミットしない。
+- 入力項目: サービス名（必須）、段階、GitHub リポジトリ。URL、説明、公開日、UptimeRobot の monitor ID、補足は「任意の項目」に畳んである。技術タグは入力させない。GitHub の Topics と使用言語から同期時に決める（3.2）。
+- GitHub リポジトリ欄は候補を出す。候補は `GH_READ_TOKEN`、なければ gh CLI のログイン（`gh auth token`）、それもなければ公開リポジトリから取る。入力すると、そのリポジトリの説明、Website、技術、最終 push を表示し、同期で何が取れるかをその場で確かめられる。GitHub の URL を貼っても `owner/repo` に直す。
+- 一覧には登録済みの行を出し、「編集」で同じフォームに読み込んで更新する。「一覧ページに反映する」は gh CLI で同期ジョブ（workflow_dispatch）を起動し、完了まで状態を表示する。
+- Supabase へは PostgREST の REST API（`/rest/v1/services`）を `fetch` で直接叩く。secret key は `apikey` ヘッダーだけで送り、旧形式の service_role キーなら `Authorization` にも付ける（同期ジョブと同じ）。入力の検証（必須、段階の値、`owner/repo` の形、URL の形、日付の形）はサーバー側で行い、空文字は `null` にして保存する。
+- 安全策: `127.0.0.1` にだけ待ち受ける。起動ごとに乱数トークンを作って HTML に埋め、API 呼び出しの `X-Admin-Token` と `Host` を照合する（別サイトからのフォーム送信や DNS rebinding への対策）。書き込みは JSON だけ受け付ける。secret key はサーバー側で使うだけで、ブラウザには渡さない。
+
 ## 7. 運用
 
 ### 初回セットアップ
@@ -233,10 +246,10 @@ UptimeRobot API v3（`GET https://api.uptimerobot.com/v3/monitors?limit=200`、B
 
 ### サービスを 1 件追加する
 
-1. Supabase の Table Editor で `services` に行を足す。最低限 `name`、`stage`、`github_repo`。
-2. 対象リポジトリの GitHub 設定で Website（URL）と Topics（技術タグ）を入れる。
+1. `node scripts/admin.mjs` で登録画面を開き、サービス名、段階、GitHub リポジトリを入れて登録する（6.3）。
+2. 対象リポジトリの GitHub 設定（About）で Website に URL を入れる。Topics に枠組みやサービス名（例: nextjs、supabase）を入れると技術タグに加わる。使用言語は自動で加わる。
 3. 公開中なら UptimeRobot に同じ URL の監視を足す。
-4. 次の同期（最長 1 時間）で表に出る。すぐ見たいときは同期ジョブを手動実行する。
+4. 登録画面の「一覧ページに反映する」で同期ジョブを起動する。押さなくても次の定時同期（最長 1 時間）で表に出る。
 
 ## 8. 決めていないこと
 
