@@ -40,11 +40,15 @@
     <section id="app" tabindex="-1" hidden>
       <div class="filters">
         <div class="search-row">
-          <input id="search" type="search" placeholder="名前、説明、タグなどで検索" aria-label="検索">
+          <input id="search" type="search" placeholder="名前、説明、インフラ、タグなどで検索" aria-label="検索">
           <span id="result-count" class="result-count" role="status"></span>
           <button type="button" id="clear-filters" class="link-button" hidden>条件をクリア</button>
         </div>
         <div class="toggle-group" id="stage-filter" role="group" aria-label="段階"></div>
+        <details class="tag-details" id="infra-details" hidden>
+          <summary>インフラ<span id="infra-summary" class="tag-summary"></span></summary>
+          <div class="chip-group" id="infra-filter" role="group" aria-label="インフラ"></div>
+        </details>
         <details class="tag-details" id="tag-details" hidden>
           <summary>タグ<span id="tag-summary" class="tag-summary"></span></summary>
           <div class="chip-group" id="tag-filter" role="group" aria-label="技術タグ"></div>
@@ -59,6 +63,7 @@
               <th class="col-up"><span class="visually-hidden">死活</span></th>
               <th class="col-name">サービス</th>
               <th class="col-stage">段階</th>
+              <th class="col-infra">インフラ</th>
               <th class="col-tags">技術</th>
               <th class="col-date col-released"><button type="button" class="sort" data-sort="releasedOn">公開日</button></th>
               <th class="col-date"><button type="button" class="sort" data-sort="pushedAt">最終更新</button></th>

@@ -25,6 +25,7 @@ import { execFile, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { promisify, parseEnv } from 'node:util';
 import { pickLanguages } from './lib/tags.mjs';
+import { probeSite, readRepoSignals, detectInfra } from './lib/infra.mjs';
 
 const execFileP = promisify(execFile);
 
@@ -170,6 +171,10 @@ function validateService(input, { partial = false } = {}) {
     if (v && !/^\d+$/.test(v)) throw new HttpError(400, 'UptimeRobot の monitor ID は数字で入力してください');
     out.uptimerobot_monitor_id = v ? Number(v) : null;
   }
+  // カンマ区切りで複数入れられる。空なら配列を空にして、同期のときの自動判定に任せる
+  for (const k of ['hosting', 'database']) {
+    if (has(k)) out[k] = [...new Set(str(k).split(/[,、]/).map((s) => s.trim()).filter(Boolean))];
+  }
   return out;
 }
 
@@ -255,7 +260,7 @@ async function listRepos({ refresh = false } = {}) {
   return repos;
 }
 
-async function repoDetail(fullName) {
+async function repoDetail(fullName, siteUrl) {
   if (!REPO_RE.test(fullName)) throw new HttpError(400, 'GitHub リポジトリは owner/repo の形で指定してください');
   const { status, body } = await ghFetch(`/repos/${fullName}`);
   if (status === 404 || !body) return null;
@@ -266,7 +271,17 @@ async function repoDetail(fullName) {
   } catch (e) {
     warn(`${fullName} の使用言語の取得に失敗しました: ${e.message}`);
   }
-  return { ...repoSummary(body), topics: Array.isArray(body.topics) ? body.topics : [], languages };
+  const topics = Array.isArray(body.topics) ? body.topics : [];
+  // 同期ジョブと同じ判定を見せる。URL の欄が空ならリポジトリの Website を使う
+  const url = [siteUrl, body.homepage].find((u) => u && isHttpUrl(u)) || null;
+  let signals = null;
+  try {
+    signals = await readRepoSignals(async (p) => (await ghFetch(p)).body, body.full_name);
+  } catch (e) {
+    warn(`${fullName} の中身を読めませんでした: ${e.message}`);
+  }
+  const infra = detectInfra({ site: await probeSite(url, { userAgent: 'my-service-list-admin' }), repo: signals, topics });
+  return { ...repoSummary(body), topics, languages, infra };
 }
 
 // ---------- 同期ジョブの起動（gh CLI 経由） ----------
@@ -374,7 +389,7 @@ async function route(req, res) {
   }
   if (req.method === 'GET' && p === '/api/github/repo') {
     const fullName = normalizeRepo((url.searchParams.get('full_name') || '').trim());
-    const detail = await repoDetail(fullName);
+    const detail = await repoDetail(fullName, (url.searchParams.get('url') || '').trim());
     if (!detail) throw new HttpError(404, `リポジトリ ${fullName} が見つかりません（名前が違うか、見る権限がありません）`);
     return send(res, 200, detail);
   }

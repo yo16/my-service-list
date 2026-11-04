@@ -31,6 +31,10 @@ create table if not exists public.services (
   updated_at              timestamptz not null default now()
 );
 
+-- あとから足した列。作成済みのテーブルにも足せるように、create table とは分けて書く
+alter table public.services add column if not exists hosting  text[] not null default '{}';
+alter table public.services add column if not exists database text[] not null default '{}';
+
 comment on table  public.services is '作成したウェブサービスのマスタ。派生データ（GitHub、UptimeRobot）は持たない';
 comment on column public.services.id is '通し番号。自動採番で、あとから変更できない';
 comment on column public.services.description is '一言の説明。未設定なら GitHub のリポジトリ説明を使う';
@@ -38,6 +42,8 @@ comment on column public.services.github_repo is 'owner/repo の形';
 comment on column public.services.url is 'サービスの URL。未設定なら GitHub の Website 欄を使う';
 comment on column public.services.uptimerobot_monitor_id is 'UptimeRobot の monitor ID。未設定なら URL の一致で探す';
 comment on column public.services.tags is '技術タグの追加分。GitHub の Topics と結合して表示する';
+comment on column public.services.hosting is '配信先（GCE など）。空なら同期ジョブがサイトの応答とリポジトリから判定する';
+comment on column public.services.database is 'DB（Cloud SQL など）。空なら同期ジョブがリポジトリから判定する';
 comment on column public.services.released_on is '公開日。未設定なら GitHub の最初の Release の日付を使う';
 comment on column public.services.note is '補足。一覧では行を展開したときだけ表示する';
 

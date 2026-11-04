@@ -13,11 +13,23 @@
         "private": false,
         "archived": false,
         "pushedAt": "2026-10-31T09:12:00Z",
-        "latestRelease": { "tag": "v1.4.0", "publishedAt": "2026-09-20T00:00:00Z" }
+        "latestRelease": {
+          "tag": "v1.4.0",
+          "publishedAt": "2026-09-20T00:00:00Z"
+        }
       },
-      "tags": ["nextjs", "supabase", "vercel"],
+      "tags": ["nextjs"],
+      "infra": {
+        "hosting": ["Vercel"],
+        "database": ["Supabase"]
+      },
       "releasedOn": "2025-04-01",
-      "uptime": { "monitorId": 800000001, "status": "UP", "ratio24h": 100, "lastIncidentAt": "2026-08-02T03:10:00Z" },
+      "uptime": {
+        "monitorId": 800000001,
+        "status": "UP",
+        "ratio24h": 100,
+        "lastIncidentAt": "2026-08-02T03:10:00Z"
+      },
       "note": null
     },
     {
@@ -34,9 +46,18 @@
         "pushedAt": "2026-06-14T12:00:00Z",
         "latestRelease": null
       },
-      "tags": ["astro", "cloudflare-pages"],
+      "tags": ["astro"],
+      "infra": {
+        "hosting": ["Cloudflare Pages"],
+        "database": []
+      },
       "releasedOn": "2024-11-15",
-      "uptime": { "monitorId": 800000002, "status": "DOWN", "ratio24h": 62.5, "lastIncidentAt": "2026-11-03T01:40:00Z" },
+      "uptime": {
+        "monitorId": 800000002,
+        "status": "DOWN",
+        "ratio24h": 62.5,
+        "lastIncidentAt": "2026-11-03T01:40:00Z"
+      },
       "note": "DNS の設定を見直す予定。"
     },
     {
@@ -53,7 +74,11 @@
         "pushedAt": "2026-11-03T02:30:00Z",
         "latestRelease": null
       },
-      "tags": ["sveltekit", "supabase", "cloudflare-workers", "drizzle", "tailwind"],
+      "tags": ["sveltekit", "drizzle", "tailwind"],
+      "infra": {
+        "hosting": ["Cloudflare Workers"],
+        "database": ["Supabase"]
+      },
       "releasedOn": null,
       "uptime": null,
       "note": null
@@ -70,11 +95,23 @@
         "private": false,
         "archived": false,
         "pushedAt": "2025-12-01T08:00:00Z",
-        "latestRelease": { "tag": "v0.3.1", "publishedAt": "2025-10-10T00:00:00Z" }
+        "latestRelease": {
+          "tag": "v0.3.1",
+          "publishedAt": "2025-10-10T00:00:00Z"
+        }
       },
-      "tags": ["python", "fly-io"],
+      "tags": ["python"],
+      "infra": {
+        "hosting": ["Fly.io"],
+        "database": ["SQLite"]
+      },
       "releasedOn": "2025-06-30",
-      "uptime": { "monitorId": 800000004, "status": "PAUSED", "ratio24h": null, "lastIncidentAt": null },
+      "uptime": {
+        "monitorId": 800000004,
+        "status": "PAUSED",
+        "ratio24h": null,
+        "lastIncidentAt": null
+      },
       "note": null
     },
     {
@@ -91,7 +128,11 @@
         "pushedAt": "2021-03-05T10:00:00Z",
         "latestRelease": null
       },
-      "tags": ["rails", "heroku"],
+      "tags": ["rails"],
+      "infra": {
+        "hosting": ["Heroku"],
+        "database": ["PostgreSQL"]
+      },
       "releasedOn": "2019-01-20",
       "uptime": null,
       "note": "Heroku の無料枠の終了にあわせて停止。"
@@ -104,6 +145,10 @@
       "url": null,
       "repo": null,
       "tags": [],
+      "infra": {
+        "hosting": [],
+        "database": []
+      },
       "releasedOn": null,
       "uptime": null,
       "note": "まだリポジトリはない。"

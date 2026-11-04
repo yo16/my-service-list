@@ -100,13 +100,23 @@
             <label for="f-repo">GitHub リポジトリ</label>
             <input id="f-repo" name="github_repo" list="repo-list" placeholder="owner/repo（入力すると候補が出ます）" autocomplete="off" spellcheck="false">
             <datalist id="repo-list"></datalist>
-            <p class="hint">URL、説明、技術タグ、公開日は、このリポジトリから同期のときに取ります。手で入力する必要はありません。</p>
+            <p class="hint">URL、説明、技術タグ、公開日、インフラは、このリポジトリとサイトから同期のときに取ります。手で入力する必要はありません。</p>
             <p id="repo-list-msg" class="hint is-error" hidden></p>
             <div id="repo-preview" class="preview" hidden aria-live="polite"></div>
           </div>
           <details class="optional" id="optional">
-            <summary>任意の項目（GitHub から取れる値を上書きしたいときだけ）</summary>
+            <summary>任意の項目（自動で取れる値を上書きしたいときだけ）</summary>
             <div class="field"><label for="f-url">URL</label><input id="f-url" name="url" type="url" placeholder="https://"></div>
+            <div class="field">
+              <label for="f-hosting">配信先</label>
+              <input id="f-hosting" name="hosting" type="text" maxlength="200" placeholder="例: GCE、Xserver" autocomplete="off">
+              <p class="hint">空なら自動で判定します。GCE やレンタルサーバーは判定できないので、ここに入れます。複数あるときはカンマで区切ります。</p>
+            </div>
+            <div class="field">
+              <label for="f-database">DB</label>
+              <input id="f-database" name="database" type="text" maxlength="200" placeholder="例: Cloud SQL" autocomplete="off">
+              <p class="hint">空なら自動で判定します。複数あるときはカンマで区切ります。</p>
+            </div>
             <div class="field"><label for="f-description">説明</label><input id="f-description" name="description" type="text" maxlength="300"></div>
             <div class="field"><label for="f-released">公開日</label><input id="f-released" name="released_on" type="date"></div>
             <div class="field"><label for="f-monitor">UptimeRobot の monitor ID</label><input id="f-monitor" name="uptimerobot_monitor_id" type="text" inputmode="numeric" placeholder="URL で照合できないときだけ"></div>
@@ -160,8 +170,10 @@
       { key: 'paused', label: '休止' },
       { key: 'retired', label: '終了' },
     ];
-    const FIELDS = ['name', 'stage', 'github_repo', 'url', 'description', 'released_on', 'uptimerobot_monitor_id', 'note'];
-    const OPTIONAL = ['url', 'description', 'released_on', 'uptimerobot_monitor_id', 'note'];
+    const FIELDS = ['name', 'stage', 'github_repo', 'url', 'hosting', 'database', 'description', 'released_on', 'uptimerobot_monitor_id', 'note'];
+    const OPTIONAL = ['url', 'hosting', 'database', 'description', 'released_on', 'uptimerobot_monitor_id', 'note'];
+    // hosting と database は配列で保存している。フォームではカンマ区切りの文字列にする
+    const fieldText = (v) => (Array.isArray(v) ? v.join(', ') : v === null || v === undefined ? '' : String(v));
     const $ = (s) => document.querySelector(s);
     const state = { services: [], editingId: null, previewSeq: 0 };
 
@@ -254,11 +266,11 @@
     function startEdit(s) {
       if (isFormDirty() && !window.confirm('入力中の内容を破棄して、この行の編集を始めますか？')) return;
       state.editingId = s.id;
-      for (const k of FIELDS) field(k).value = s[k] === null || s[k] === undefined ? '' : String(s[k]);
+      for (const k of FIELDS) field(k).value = fieldText(s[k]);
       $('#form-title').textContent = `${fmtNo(s.id)} ${s.name} を編集する`;
       $('#submit').textContent = '更新する';
       $('#cancel').hidden = false;
-      $('#optional').open = OPTIONAL.some((k) => s[k]);
+      $('#optional').open = OPTIONAL.some((k) => fieldText(s[k]));
       setMsg($('#form-msg'), '');
       clearEditingMark();
       const tr = document.querySelector(`tr[data-id="${s.id}"]`);
@@ -343,7 +355,8 @@
       preview.classList.remove('is-error');
       preview.replaceChildren(el('span', { class: 'pv-title', text: 'GitHub を確認しています…' }));
       try {
-        const r = await api('GET', `/api/github/repo?full_name=${encodeURIComponent(value)}`);
+        const siteUrl = field('url').value.trim();
+        const r = await api('GET', `/api/github/repo?full_name=${encodeURIComponent(value)}&url=${encodeURIComponent(siteUrl)}`);
         if (seq !== state.previewSeq) return;
         const tags = [...r.topics, ...r.languages];
         const flags = [r.private ? '非公開' : null, r.archived ? 'アーカイブ済み' : null].filter(Boolean);
@@ -360,6 +373,8 @@
                 : '（なし。GitHub の About で Website を設定するか、下の任意の項目で URL を入れる）'),
             el('dt', { text: '技術' }), el('dd', {},
               tags.length ? el('div', { class: 'tags' }, ...tags.map((t) => el('span', { class: 'tag', text: t }))) : '（なし）'),
+            el('dt', { text: '配信先' }), el('dd', { text: r.infra.hosting.join(', ') || '（判定できず。任意の項目に入力できます）' }),
+            el('dt', { text: 'DB' }), el('dd', { text: r.infra.database.join(', ') || '（判定できず。DB があれば任意の項目に入力できます）' }),
             el('dt', { text: '最終 push' }), el('dd', { text: fmtWhen(r.pushedAt) || '（なし）' }),
           ),
         );

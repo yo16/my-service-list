@@ -27,6 +27,7 @@
     query: '',
     stages: new Set(DEFAULT_STAGES),
     tags: new Set(),
+    infra: new Set(),
     sort: { key: 'id', dir: 'asc' },
     expanded: new Set(),
   };
@@ -246,6 +247,7 @@
     $('#app').hidden = false;
     renderMeta();
     renderStageFilter();
+    renderInfraFilter();
     renderTagFilter();
     renderLegend();
     bindControls();
@@ -302,38 +304,45 @@
     }
   }
 
-  function renderTagFilter() {
-    const group = $('#tag-filter');
+  const infraHosting = (s) => (s.infra && s.infra.hosting) || [];
+  const infraDatabase = (s) => (s.infra && s.infra.database) || [];
+  const infraValues = (s) => [...infraHosting(s), ...infraDatabase(s)];
+
+  // チップの絞り込み（技術タグとインフラで共通）。多く使われている順に並べる
+  function renderChipFilter(name, selected, valuesOf) {
+    const group = $(`#${name}-filter`);
     group.replaceChildren();
     const freq = new Map();
-    for (const s of state.data.services) for (const t of s.tags || []) freq.set(t, (freq.get(t) || 0) + 1);
-    $('#tag-details').hidden = !freq.size;
-    updateTagSummary();
-    if (!freq.size) return;
+    for (const s of state.data.services) for (const t of new Set(valuesOf(s))) freq.set(t, (freq.get(t) || 0) + 1);
+    $(`#${name}-details`).hidden = !freq.size;
+    // 畳んでいても、選んでいるものが分かるようにする
+    const updateSummary = () => {
+      $(`#${name}-summary`).textContent = selected().size ? `選択中: ${[...selected()].join(', ')}` : '';
+    };
+    updateSummary();
     const sorted = [...freq.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-    for (const [tag, n] of sorted) {
+    for (const [value, n] of sorted) {
       const btn = el('button', {
         type: 'button',
         class: 'chip',
-        'aria-pressed': String(state.tags.has(tag)),
+        'aria-pressed': String(selected().has(value)),
         onclick: () => {
-          if (state.tags.has(tag)) state.tags.delete(tag); else state.tags.add(tag);
-          btn.setAttribute('aria-pressed', String(state.tags.has(tag)));
-          updateTagSummary();
+          if (selected().has(value)) selected().delete(value); else selected().add(value);
+          btn.setAttribute('aria-pressed', String(selected().has(value)));
+          updateSummary();
           renderRows();
         },
-      }, [tag, el('span', { class: 'count', text: String(n) })]);
+      }, [value, el('span', { class: 'count', text: String(n) })]);
       group.append(btn);
     }
   }
 
-  // 畳んでいても、選んでいるタグが分かるようにする
-  function updateTagSummary() {
-    $('#tag-summary').textContent = state.tags.size ? `選択中: ${[...state.tags].join(', ')}` : '';
-  }
+  const renderTagFilter = () => renderChipFilter('tag', () => state.tags, (s) => s.tags || []);
+  const renderInfraFilter = () => renderChipFilter('infra', () => state.infra, infraValues);
 
   const isFiltered = () => state.query !== ''
     || state.tags.size > 0
+    || state.infra.size > 0
     || state.stages.size !== DEFAULT_STAGES.length
     || DEFAULT_STAGES.some((k) => !state.stages.has(k));
 
@@ -341,8 +350,10 @@
     state.query = '';
     state.stages = new Set(DEFAULT_STAGES);
     state.tags = new Set();
+    state.infra = new Set();
     $('#search').value = '';
     renderStageFilter();
+    renderInfraFilter();
     renderTagFilter();
     renderRows();
     $('#search').focus();
@@ -353,7 +364,9 @@
     if (controlsBound) return;
     controlsBound = true;
     // タグが多くなるので、狭い画面では最初は畳む
-    $('#tag-details').open = window.matchMedia('(min-width: 720px)').matches;
+    const wide = window.matchMedia('(min-width: 720px)').matches;
+    $('#tag-details').open = wide;
+    $('#infra-details').open = wide;
     $('#clear-filters').addEventListener('click', clearFilters);
     $('#search').addEventListener('input', (e) => {
       state.query = e.target.value.trim().toLowerCase();
@@ -376,8 +389,9 @@
   function matches(s) {
     if (!state.stages.has(s.stage)) return false;
     for (const t of state.tags) if (!(s.tags || []).includes(t)) return false;
+    for (const t of state.infra) if (!infraValues(s).includes(t)) return false;
     if (state.query) {
-      const hay = [s.name, s.description, s.note, ...(s.tags || []), s.repo && s.repo.fullName]
+      const hay = [s.name, s.description, s.note, ...(s.tags || []), ...infraValues(s), s.repo && s.repo.fullName]
         .filter(Boolean).join(' ').toLowerCase();
       if (!hay.includes(state.query)) return false;
     }
@@ -456,6 +470,16 @@
     return wrap;
   }
 
+  // 配信先と DB を 1 行ずつ出す。分からない項目の行は省き、どちらもなければ — だけを出す
+  function infraList(s) {
+    const lines = [['配信', infraHosting(s)], ['DB', infraDatabase(s)]].filter(([, values]) => values.length);
+    if (!lines.length) return el('span', { class: 'none', text: '—' });
+    return el('dl', { class: 'infra' }, lines.flatMap(([label, values]) => [
+      el('dt', { text: label }),
+      el('dd', { text: values.join(', ') }),
+    ]));
+  }
+
   function iconLink(kind, rawHref, label) {
     const href = safeUrl(rawHref);
     if (!href) return el('span', { class: 'icon-link disabled', 'aria-hidden': 'true' }, svgIcon(kind));
@@ -498,6 +522,7 @@
     if (s.repo && s.repo.archived) stageCell.append(el('span', { class: 'flag', text: 'archived' }));
     tr.append(stageCell);
 
+    tr.append(el('td', { class: 'infra-cell' }, infraList(s)));
     tr.append(el('td', { class: 'tags-cell' }, tagList(s.tags || [], 3)));
 
     const released = fmtDate(s.releasedOn);
@@ -516,7 +541,7 @@
   }
 
   function renderDetail(s) {
-    const td = el('td', { colspan: '8' });
+    const td = el('td', { colspan: '9' });
     if (s.description) td.append(el('p', { class: 'full-desc', text: s.description }));
     if (s.note) td.append(el('p', { class: 'note', text: s.note }));
 
@@ -562,6 +587,8 @@
     grid.append(dl([
       ['URL', safeUrl(s.url) ? el('a', { href: s.url, target: '_blank', rel: 'noopener', text: s.url }) : (s.url || '未設定')],
       ['公開日', fmtDate(s.releasedOn)],
+      ['配信先', infraHosting(s).join(', ') || '不明'],
+      ['DB', infraDatabase(s).join(', ') || '不明'],
       ['技術', (s.tags && s.tags.length) ? tagList(s.tags) : null],
     ]));
 

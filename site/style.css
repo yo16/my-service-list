@@ -311,7 +311,8 @@ tr.row.is-down td:first-child { box-shadow: inset 3px 0 0 var(--down); }
 .col-id { width: 64px; }
 .col-up { width: 34px; }
 .col-stage { width: 90px; }
-.col-tags { width: 240px; }
+.col-infra { width: 170px; }
+.col-tags { width: 170px; }
 .col-date { width: 110px; }
 .col-links { width: 84px; }
 
@@ -399,6 +400,19 @@ td.up { padding-inline: 8px; text-align: center; }
   color: var(--warn-text);
   font-weight: 600;
 }
+
+/* インフラ（配信先と DB） */
+.infra {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1px 6px;
+  margin: 0;
+  font-size: 0.87rem;
+}
+.infra dt { color: var(--muted); font-size: 0.8rem; line-height: 1.6; }
+.infra dd { margin: 0; overflow-wrap: anywhere; }
+td.infra-cell .none { color: var(--muted); }
+tr.row.is-retired .infra dd { color: var(--muted); }
 
 /* 技術タグ */
 .tags { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -491,14 +505,14 @@ tr.detail .note { margin: 0 0 10px; white-space: pre-wrap; }
   .col-links { width: 108px; }
 }
 
-/* ---------- タブレット幅: 列を詰め、公開日は展開したときだけ見せる ---------- */
+/* ---------- タブレット幅: 列を詰め、公開日と技術は展開したときだけ見せる ---------- */
 
 @media (min-width: 720px) and (max-width: 959px) {
   .col-id { width: 58px; }
   .col-stage { width: 84px; }
-  .col-tags { width: 170px; }
+  .col-infra { width: 170px; }
   .col-date { width: 100px; }
-  .col-released, td.released { display: none; }
+  .col-released, td.released, .col-tags, td.tags-cell { display: none; }
   tr.detail td { padding-left: 16px; }
 }
 
@@ -514,7 +528,7 @@ tr.detail .note { margin: 0 0 10px; white-space: pre-wrap; }
   table.services thead { display: block; margin-bottom: 8px; }
   table.services thead tr { display: flex; gap: 14px; }
   table.services thead th { position: static; padding: 0; background: transparent; border: 0; box-shadow: none; width: auto; }
-  .col-up, .col-name, .col-stage, .col-tags, .col-links { display: none; }
+  .col-up, .col-name, .col-stage, .col-infra, .col-tags, .col-links { display: none; }
 
   tr.row {
     display: grid;
@@ -522,6 +536,7 @@ tr.detail .note { margin: 0 0 10px; white-space: pre-wrap; }
     grid-template-areas:
       "id up name name name"
       "stage stage tags tags tags"
+      "infra infra infra infra infra"
       "released released released pushed links";
     gap: 6px 10px;
     align-items: center;
@@ -538,6 +553,7 @@ tr.detail .note { margin: 0 0 10px; white-space: pre-wrap; }
   tr.row td.name-cell { grid-area: name; min-width: 0; }
   tr.row td.stage { grid-area: stage; }
   tr.row td.tags-cell { grid-area: tags; min-width: 0; }
+  tr.row td.infra-cell { grid-area: infra; min-width: 0; }
   tr.row td.released { grid-area: released; }
   tr.row td.pushed { grid-area: pushed; text-align: right; }
   tr.row td.links { grid-area: links; }

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /* my-service-list: 同期ジョブ
  *
- * Supabase の services を読み、GitHub API（リポジトリ情報、Topics、使用言語、Release）と UptimeRobot API v3 で派生データを付け、
- * パスフレーズで暗号化した data.enc.json と site/ の中身を dist/ に書き出す。
+ * Supabase の services を読み、GitHub API（リポジトリ情報、Topics、使用言語、Release、ファイル）、UptimeRobot API v3、
+ * サイトの応答ヘッダーで派生データを付け、パスフレーズで暗号化した data.enc.json と site/ の中身を dist/ に書き出す。
  * Node 22 以上の標準機能だけで動く（fetch、crypto.subtle）。npm の依存はない。
  *
  * 使い方:
@@ -21,6 +21,7 @@ import { cp, mkdir, rm, writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pickLanguages, mergeTags } from './lib/tags.mjs';
+import { probeSite, readRepoSignals, detectInfra } from './lib/infra.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SITE_DIR = path.join(ROOT, 'site');
@@ -187,7 +188,30 @@ function matchMonitor(row, monitors, serviceUrl) {
 
 // ---------- 結合 ----------
 
-function buildService(row, repo, monitor, ratio24h) {
+// インフラを決める。手入力（Supabase の hosting、database）があればその項目は判定より優先する
+async function resolveInfra(row, repo, url) {
+  const manualHosting = Array.isArray(row.hosting) ? row.hosting : [];
+  const manualDatabase = Array.isArray(row.database) ? row.database : [];
+  if (manualHosting.length && manualDatabase.length) return { hosting: manualHosting, database: manualDatabase };
+
+  const site = await probeSite(url, { userAgent: 'my-service-list-sync' });
+  if (url && !site) warn(`#${row.id}: サイトに接続できないので、応答からは配信先を判定しません`);
+  let signals = null;
+  if (repo) {
+    try {
+      signals = await readRepoSignals(ghGet, repo.fullName);
+    } catch (e) {
+      warn(`#${row.id}: リポジトリの中身を読めないので、ファイルからは判定しません: ${e.message}`);
+    }
+  }
+  const detected = detectInfra({ site, repo: signals, topics: repo ? repo.topics : [] });
+  return {
+    hosting: manualHosting.length ? manualHosting : detected.hosting,
+    database: manualDatabase.length ? manualDatabase : detected.database,
+  };
+}
+
+function buildService(row, repo, monitor, ratio24h, infra) {
   const url = row.url || (repo && repo.homepage) || null;
   return {
     id: row.id,
@@ -207,6 +231,7 @@ function buildService(row, repo, monitor, ratio24h) {
       : null,
     // Topics（手で付けた分類）→ 使用言語（自動）→ Supabase の tags（上書き・追加分）の順。重複は大文字小文字を無視して除く
     tags: mergeTags(repo ? repo.topics : [], repo ? repo.languages : [], Array.isArray(row.tags) ? row.tags : []),
+    infra,
     releasedOn: row.released_on || (repo && repo.firstReleaseAt ? repo.firstReleaseAt.slice(0, 10) : null),
     uptime: monitor
       ? {
@@ -259,7 +284,8 @@ async function buildData() {
         warn(`#${row.id}: 稼働率の取得に失敗しました: ${e.message}`);
       }
     }
-    services.push(buildService(row, repo, monitor, ratio24h));
+    const infra = await resolveInfra(row, repo, url);
+    services.push(buildService(row, repo, monitor, ratio24h, infra));
   }
 
   return { generatedAt: new Date().toISOString(), services };

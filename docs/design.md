@@ -2,11 +2,11 @@
 
 作成したウェブサービスの一覧を、1 つの表で見るためのサイトの設計。マスタは Supabase、死活は UptimeRobot、リポジトリ情報は GitHub から取り、GitHub Pages に限定公開する。
 
-最終更新: 2026-11-03
+最終更新: 2026-11-05
 
 ## 1. 目的と範囲
 
-- 自分が作ったウェブサービスに通し番号を付け、技術背景、開発段階、公開日、死活状況を 1 画面で見渡せるようにする。
+- 自分が作ったウェブサービスに通し番号を付け、インフラ（配信先と DB）、技術背景、開発段階、公開日、死活状況を 1 画面で見渡せるようにする。
 - 1 件あたりの情報は少なく保つ。詳細は各リポジトリに任せ、ここには「何が、どの段階で、生きているか」だけを置く。
 - 対象は数十件を想定する。それを超える規模の検索やページングは扱わない。
 
@@ -31,8 +31,9 @@
 ┌─────────────────────────┐
 │ GitHub Actions（同期ジョブ）│  1 時間ごと + 手動 + push 時
 │  scripts/build.mjs       │
-│   ├ GitHub API   → リポジトリの URL、Topics、使用言語、Release、最終 push、archived
+│   ├ GitHub API   → リポジトリの URL、Topics、使用言語、Release、最終 push、archived、ファイル
 │   ├ UptimeRobot  → 死活、直近 24 時間の稼働率、最後の障害
+│   ├ 各サイト      → 応答ヘッダー（配信先の判定）
 │   └ 結合して JSON を作り、パスフレーズで暗号化
 └───────────┬─────────────┘
             │ deploy-pages（暗号化済み JSON + 静的ページ）
@@ -64,6 +65,8 @@
 | `url` | text | | サービスの URL。未設定なら GitHub の Website 欄（homepage）を使う |
 | `uptimerobot_monitor_id` | bigint | | UptimeRobot の monitor ID。未設定なら URL の一致で探す |
 | `tags` | text[] | | 技術タグの追加分。GitHub の Topics、使用言語と結合して表示する |
+| `hosting` | text[] | ○ | 配信先（GCE など）。空なら自動で判定する（3.4）。既定は空 |
+| `database` | text[] | ○ | DB（Cloud SQL など）。空なら自動で判定する（3.4）。既定は空 |
 | `released_on` | date | | 公開日。未設定なら GitHub の最初の Release の日付を使う |
 | `note` | text | | 補足。展開したときだけ表示する |
 | `created_at` / `updated_at` | timestamptz | ○ | 作成日時、更新日時（自動） |
@@ -123,7 +126,8 @@ UptimeRobot API v3（`GET https://api.uptimerobot.com/v3/monitors?limit=200`、B
         "pushedAt": "2026-10-30T12:34:56Z",
         "latestRelease": { "tag": "v1.2.0", "publishedAt": "2026-09-01T00:00:00Z" }
       },
-      "tags": ["nextjs", "supabase", "vercel", "typescript"],
+      "tags": ["nextjs", "typescript"],
+      "infra": { "hosting": ["Vercel"], "database": ["Supabase"] },
       "releasedOn": "2025-04-01",
       "uptime": {
         "monitorId": 123456,
@@ -140,6 +144,21 @@ UptimeRobot API v3（`GET https://api.uptimerobot.com/v3/monitors?limit=200`、B
 - `repo` は `github_repo` が未設定なら `null`。`uptime` は未監視なら `null`。
 - 列の由来（Supabase か GitHub か）は JSON に残さない。画面は結果だけを見る。
 
+### 3.4 インフラの判定
+
+配信先と DB は、外から見える印で推定する。規則は `scripts/lib/infra.mjs` にあり、同期ジョブと登録画面で共有する。`hosting`、`database` に手で入れた項目は判定より優先する。
+
+- **配信先**: 次の順に見て、最初に当たった段を採る。動いているサイトの印を、リポジトリの設定より優先する。
+  1. サイトの最後の URL のホスト名（`*.github.io`、`*.vercel.app`、`*.run.app` など）
+  2. 応答ヘッダー（`x-vercel-id`、`server: GitHub.com`、`x-nf-request-id` など）
+  3. GitHub の Topics（`vercel`、`gce` など）
+  4. リポジトリのファイル（`vercel.json`、`fly.toml`、wrangler の設定、`firebase.json` の `hosting` など）
+  5. 手前に別のものが隠れていることがあるヘッダー（`server: cloudflare`、`server: Google Frontend` など）
+- **DB**: Topics、`supabase` フォルダ、`firestore.rules`、wrangler の `d1_databases` と `kv_namespaces`、依存パッケージ（`package.json` の dependencies、`requirements.txt`、`pyproject.toml`）から、当たったものをすべて採る。`pg` のように種類しか分からないものは、ほかに当たらないときだけ PostgreSQL などと出す。
+- **読む範囲**: Git Trees API でファイル一覧を取り、深さ 3 段（`apps/web/package.json` まで）を見る。`node_modules`、`docs`、`examples`、`tests` などは除く。ファイルの中身は種類ごとに 4 本まで、浅いものから読む。
+- **限界**: GCE、VPS、レンタルサーバー（`server: nginx` だけが見える）、Cloud SQL は印が出ないので判定できない。手で入れるか、Topics に付ける。DB の空欄は「DB がない」と「判定できない」を区別しない。
+- **失敗の扱い**: サイトに接続できないとき（10 秒で打ち切る）やリポジトリを読めないときは、残りの手がかりで判定し、ジョブは止めない。警告には通し番号だけを出す。
+
 ## 4. 同期ジョブ
 
 - 置き場所: `.github/workflows/sync.yml` と `scripts/build.mjs`。
@@ -149,8 +168,9 @@ UptimeRobot API v3（`GET https://api.uptimerobot.com/v3/monitors?limit=200`、B
   1. Supabase から `services` を `id` 順に読む。
   2. `github_repo` のある行について GitHub API を呼ぶ。404 や権限エラーは警告を出して `repo: null` にし、ジョブは止めない。
   3. UptimeRobot の監視一覧を 1 回で取り、各行に照合する。API エラーのときは全行 `uptime: null` にし、ジョブは止めない。
-  4. `data.json` を組み立て、パスフレーズで暗号化して `dist/data.enc.json` に書く。`site/` の中身も `dist/` にコピーする。
-  5. `actions/upload-pages-artifact` と `actions/deploy-pages` で配置する。
+  4. インフラを決める（3.4）。`hosting` と `database` の両方が手で入っている行は判定しない。
+  5. `data.json` を組み立て、パスフレーズで暗号化して `dist/data.enc.json` に書く。`site/` の中身も `dist/` にコピーする。
+  6. `actions/upload-pages-artifact` と `actions/deploy-pages` で配置する。
 - 失敗の扱い: Supabase が読めないときだけジョブを失敗させる（前回の配置が残る）。外部 API の一部失敗は配置を止めない。
 - ログの扱い: 公開リポジトリの Actions ログは誰でも読めるので、サービス名、URL、リポジトリ名をログに出さない。警告は通し番号（`#1` など）だけで示し、どのサービスかは登録画面で確かめる。
 
@@ -214,14 +234,14 @@ UptimeRobot API v3（`GET https://api.uptimerobot.com/v3/monitors?limit=200`、B
 ### 6.2 要素
 
 - **ヘッダー**: タイトル、データの生成時刻、段階ごとの件数。死活で「停止」があれば、件数を赤い印で先頭に出す。
-- **フィルタ**: 検索（名前、説明、補足、タグ、リポジトリ名に部分一致）、段階のトグル（複数選択）、タグのチップ（複数選択、AND）。既定では「終了」を隠す。表示件数（「5 / 6 件を表示」）を常に出し、既定から変えているときは「条件をクリア」を出す。タグは畳める。幅 720px 以上では最初から開き、それ未満では畳んで始める。畳んでいても選択中のタグは見出しの横に出る。
-- **表の列**（8 列）: 番号、死活の点、サービス名（下に説明を小さく 1 行）、段階のバッジ、技術タグ（3 つまで表示し、残りは「+n」）、公開日、最終更新（相対表示、ホバーで日時）、リンク 2 つ（サイト、リポジトリ）。
+- **フィルタ**: 検索（名前、説明、補足、インフラ、タグ、リポジトリ名に部分一致）、段階のトグル（複数選択）、インフラのチップ（配信先と DB をまとめて 1 列。複数選択、AND）、タグのチップ（複数選択、AND）。既定では「終了」を隠す。表示件数（「5 / 6 件を表示」）を常に出し、既定から変えているときは「条件をクリア」を出す。インフラとタグは畳める。幅 720px 以上では最初から開き、それ未満では畳んで始める。畳んでいても選択中のものは見出しの横に出る。
+- **表の列**（9 列）: 番号、死活の点、サービス名（下に説明を小さく 1 行）、段階のバッジ、インフラ（配信先と DB を 1 行ずつ）、技術タグ（3 つまで表示し、残りは「+n」）、公開日、最終更新（相対表示、ホバーで日時）、リンク 2 つ（サイト、リポジトリ）。
 - **死活の点**: UP は緑の丸、DOWN と LOOKS_DOWN は外周つきの赤い丸、PAUSED と STARTED は灰の四角、未監視は灰の輪。ホバーで状態、24 時間の稼働率、最後の障害を出す。停止の行は左端に赤い線を引き、名前の横に「停止」と文字でも出す。
 - **行の展開**: 行をクリックすると下に 1 段開き、説明の全文、note、最新リリース、アーカイブ済みの印、UptimeRobot の数値を出す。別ページは作らない。開閉しても、キーボードのフォーカスは名前のボタンに残す。
 - **並べ替え**: 番号、公開日、最終更新の見出しをクリックで切り替える。既定は番号の昇順。状態は `aria-sort` でも伝える。見出しはスクロールしても画面上部に残す。
 - **段階ごとの見た目**: 終了は名前とタグを薄くする（文字のコントラストは保つので、行全体の透明度は下げない）。休止はバッジだけ琥珀色にする。
-- **タブレット幅（720〜959px）**: 表のまま列を詰め、公開日の列を隠す。公開日は行を展開すると見られる。
-- **スマホ幅（720px 未満）**: 表を横スクロールさせず、1 行を 1 枚のカードに変える。カードの 1 行目に番号、死活、名前、2 行目に段階とタグ、3 行目に日付とリンク。見出しは並べ替えのボタンだけを残す。入力欄の文字は 16px にする（iOS Safari の自動拡大を避ける）。
+- **タブレット幅（720〜959px）**: 表のまま列を詰め、公開日と技術の列を隠す。どちらも行を展開すると見られる。
+- **スマホ幅（720px 未満）**: 表を横スクロールさせず、1 行を 1 枚のカードに変える。カードの 1 行目に番号、死活、名前、2 行目に段階とタグ、3 行目にインフラ、4 行目に日付とリンク。見出しは並べ替えのボタンだけを残す。入力欄の文字は 16px にする（iOS Safari の自動拡大を避ける）。
 - **配色**: ライトとダークに `prefers-color-scheme` で追従する。文字は 4.5:1、入力欄の枠と死活の点は 3:1 以上のコントラストを保つ。死活の色は色覚多様性に配慮し、赤と緑に加えて形（丸、四角、輪）と文字でも区別する。
 - **文字の大きさ**: 0.8rem、0.87rem、1rem の 3 段階（基準は 15px）。0.8rem を下限にする。
 - **鍵の画面**: 復号前は表の代わりにパスフレーズの入力欄だけを出す。
@@ -232,8 +252,8 @@ UptimeRobot API v3（`GET https://api.uptimerobot.com/v3/monitors?limit=200`、B
 
 - 起動: `node scripts/admin.mjs`。`http://127.0.0.1:8787/` で `admin/index.html` を配信し、ブラウザを開く。Node 22 以上の標準機能だけで動き、npm の依存はない。
 - 設定: リポジトリ直下の `.env` から `SUPABASE_URL` と `SUPABASE_SERVICE_ROLE_KEY` を読む（`.env.example` を参照）。`.env` はコミットしない。
-- 入力項目: サービス名（必須）、段階、GitHub リポジトリ。URL、説明、公開日、UptimeRobot の monitor ID、補足は「任意の項目」に畳んである。技術タグは入力させない。GitHub の Topics と使用言語から同期時に決める（3.2）。
-- GitHub リポジトリ欄は候補を出す。候補は `GH_READ_TOKEN`、なければ gh CLI のログイン（`gh auth token`）、それもなければ公開リポジトリから取る。入力すると、そのリポジトリの説明、Website、技術、最終 push を表示し、同期で何が取れるかをその場で確かめられる。GitHub の URL を貼っても `owner/repo` に直す。
+- 入力項目: サービス名（必須）、段階、GitHub リポジトリ。URL、配信先、DB、説明、公開日、UptimeRobot の monitor ID、補足は「任意の項目」に畳んである。配信先と DB はカンマ区切りで入れ、空なら自動で判定する（3.4）。技術タグは入力させない。GitHub の Topics と使用言語から同期時に決める（3.2）。
+- GitHub リポジトリ欄は候補を出す。候補は `GH_READ_TOKEN`、なければ gh CLI のログイン（`gh auth token`）、それもなければ公開リポジトリから取る。入力すると、そのリポジトリの説明、Website、技術、判定した配信先と DB、最終 push を表示し、同期で何が取れるかをその場で確かめられる。GitHub の URL を貼っても `owner/repo` に直す。
 - 一覧には登録済みの行を出し、「編集」で同じフォームに読み込んで更新する。入力の途中で別の行の「編集」を押したときは、破棄してよいか確認する。幅 960px 以上ではフォームを画面に留める。
 - 「一覧ページに反映する」は gh CLI で同期ジョブ（workflow_dispatch）を起動し、完了まで状態を表示する。起動前の最新の実行と比べて、今回の実行を見分ける。
 - Supabase へは PostgREST の REST API（`/rest/v1/services`）を `fetch` で直接叩く。secret key は `apikey` ヘッダーだけで送り、旧形式の service_role キーなら `Authorization` にも付ける（同期ジョブと同じ）。入力の検証（必須、段階の値、`owner/repo` の形、URL の形、実在する日付）はサーバー側で行い、空文字は `null` にして保存する。
