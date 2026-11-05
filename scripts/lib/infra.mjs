@@ -1,6 +1,6 @@
-// インフラ（配信先と DB）の判定。同期ジョブ（build.mjs）と登録画面（admin.mjs）で共有する。
+// インフラ（配信先、DB、外部サービスなど）の判定。同期ジョブ（build.mjs）と登録画面（admin.mjs）で共有する。
 // 外から見える印だけで推定するので、GCE や Cloud SQL のように印が出ないものは判定できない。
-// そのときは Supabase の hosting、database 列に手で入れる（手入力が判定より優先する）。
+// そのときは Supabase の infra 列に手で入れる（判定の結果に足される。-Name と書くと判定の結果から除く）。
 
 /** サイトのホスト名の末尾と配信先 */
 const HOST_SUFFIXES = [
@@ -124,6 +124,24 @@ const DATABASE_ENGINE_PACKAGES = {
   pymysql: 'MySQL',
   'better-sqlite3': 'SQLite',
   sqlite3: 'SQLite',
+};
+
+/** 配信先と DB のどちらでもないサービス。依存パッケージ名（npm と PyPI）から決める */
+const OTHER_PACKAGES = {
+  '@google-cloud/functions-framework': 'Cloud Functions',
+  'functions-framework': 'Cloud Functions',
+  'firebase-functions': 'Cloud Functions',
+  '@googlemaps/js-api-loader': 'Google Maps API',
+  '@googlemaps/google-maps-services-js': 'Google Maps API',
+  '@react-google-maps/api': 'Google Maps API',
+  '@vis.gl/react-google-maps': 'Google Maps API',
+  googlemaps: 'Google Maps API',
+};
+
+/** 配信先と DB のどちらでもないサービスの Topics */
+const OTHER_TOPICS = {
+  'cloud-functions': 'Cloud Functions',
+  'google-maps': 'Google Maps API',
 };
 
 const unique = (list) => [...new Set(list)];
@@ -282,9 +300,34 @@ function detectDatabase({ topics, files, dirs, packages, firebaseKeys, wrangler 
   return unique(packages.map((p) => DATABASE_ENGINE_PACKAGES[p]).filter(Boolean));
 }
 
+function detectOther({ topics, packages }) {
+  return unique([
+    ...topics.map((t) => OTHER_TOPICS[t.toLowerCase()]),
+    ...packages.map((p) => OTHER_PACKAGES[p]),
+  ].filter(Boolean));
+}
+
+/**
+ * 判定の結果に手入力を重ねる。手入力はそのまま足し、-Name は判定の結果から除く。
+ * 大文字小文字を無視して比べ、重複は除く。先に出たものの表記を残す。
+ */
+export function applyManualInfra(detected, manual) {
+  const entries = (Array.isArray(manual) ? manual : []).map((v) => String(v ?? '').trim()).filter(Boolean);
+  const excluded = new Set(entries.filter((v) => v.startsWith('-')).map((v) => v.slice(1).trim().toLowerCase()));
+  const seen = new Set();
+  const out = [];
+  for (const v of [...detected, ...entries.filter((e) => !e.startsWith('-'))]) {
+    const key = v.toLowerCase();
+    if (seen.has(key) || excluded.has(key)) continue;
+    seen.add(key);
+    out.push(v);
+  }
+  return out;
+}
+
 /**
  * site は probeSite の戻り値（null 可）、repo は readRepoSignals の戻り値（null 可）。
- * 戻り値は { hosting: string[], database: string[] }。判定できなければ空の配列。
+ * 戻り値は名前の配列で、配信先、DB、その他の順に並ぶ。判定できなければ空の配列。
  */
 export function detectInfra({ site = null, repo = null, topics = [] } = {}) {
   const input = {
@@ -296,5 +339,5 @@ export function detectInfra({ site = null, repo = null, topics = [] } = {}) {
     firebaseKeys: repo ? repo.firebaseKeys : [],
     wrangler: parseWrangler(repo ? repo.wrangler : ''),
   };
-  return { hosting: detectHosting(input), database: detectDatabase(input) };
+  return unique([...detectHosting(input), ...detectDatabase(input), ...detectOther(input)]);
 }

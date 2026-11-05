@@ -19,10 +19,7 @@
         }
       },
       "tags": ["nextjs"],
-      "infra": {
-        "hosting": ["Vercel"],
-        "database": ["Supabase"]
-      },
+      "infra": ["Vercel", "Supabase", "Google Maps API"],
       "releasedOn": "2025-04-01",
       "uptime": {
         "monitorId": 800000001,
@@ -47,10 +44,7 @@
         "latestRelease": null
       },
       "tags": ["astro"],
-      "infra": {
-        "hosting": ["Cloudflare Pages"],
-        "database": []
-      },
+      "infra": ["Cloudflare Pages"],
       "releasedOn": "2024-11-15",
       "uptime": {
         "monitorId": 800000002,
@@ -75,10 +69,7 @@
         "latestRelease": null
       },
       "tags": ["sveltekit", "drizzle", "tailwind"],
-      "infra": {
-        "hosting": ["Cloudflare Workers"],
-        "database": ["Supabase"]
-      },
+      "infra": ["Cloudflare Workers", "Supabase", "Cloud Functions"],
       "releasedOn": null,
       "uptime": null,
       "note": null
@@ -101,10 +92,7 @@
         }
       },
       "tags": ["python"],
-      "infra": {
-        "hosting": ["Fly.io"],
-        "database": ["SQLite"]
-      },
+      "infra": ["Fly.io", "SQLite"],
       "releasedOn": "2025-06-30",
       "uptime": {
         "monitorId": 800000004,
@@ -129,10 +117,7 @@
         "latestRelease": null
       },
       "tags": ["rails"],
-      "infra": {
-        "hosting": ["Heroku"],
-        "database": ["PostgreSQL"]
-      },
+      "infra": ["Heroku", "PostgreSQL"],
       "releasedOn": "2019-01-20",
       "uptime": null,
       "note": "Heroku の無料枠の終了にあわせて停止。"
@@ -145,10 +130,7 @@
       "url": null,
       "repo": null,
       "tags": [],
-      "infra": {
-        "hosting": [],
-        "database": []
-      },
+      "infra": [],
       "releasedOn": null,
       "uptime": null,
       "note": "まだリポジトリはない。"

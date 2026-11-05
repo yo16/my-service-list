@@ -401,18 +401,16 @@ td.up { padding-inline: 8px; text-align: center; }
   font-weight: 600;
 }
 
-/* インフラ（配信先と DB） */
+/* インフラ */
 .infra {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 1px 6px;
+  list-style: none;
   margin: 0;
+  padding: 0;
   font-size: 0.87rem;
 }
-.infra dt { color: var(--muted); font-size: 0.8rem; line-height: 1.6; }
-.infra dd { margin: 0; overflow-wrap: anywhere; }
+.infra li { overflow-wrap: anywhere; }
 td.infra-cell .none { color: var(--muted); }
-tr.row.is-retired .infra dd { color: var(--muted); }
+tr.row.is-retired .infra { color: var(--muted); }
 
 /* 技術タグ */
 .tags { display: flex; flex-wrap: wrap; gap: 4px; }

@@ -304,9 +304,7 @@
     }
   }
 
-  const infraHosting = (s) => (s.infra && s.infra.hosting) || [];
-  const infraDatabase = (s) => (s.infra && s.infra.database) || [];
-  const infraValues = (s) => [...infraHosting(s), ...infraDatabase(s)];
+  const infraValues = (s) => (Array.isArray(s.infra) ? s.infra : []);
 
   // チップの絞り込み（技術タグとインフラで共通）。多く使われている順に並べる
   function renderChipFilter(name, selected, valuesOf) {
@@ -470,14 +468,11 @@
     return wrap;
   }
 
-  // 配信先と DB を 1 行ずつ出す。分からない項目の行は省き、どちらもなければ — だけを出す
+  // 1 行に 1 つ出す。なければ — だけを出す
   function infraList(s) {
-    const lines = [['配信', infraHosting(s)], ['DB', infraDatabase(s)]].filter(([, values]) => values.length);
-    if (!lines.length) return el('span', { class: 'none', text: '—' });
-    return el('dl', { class: 'infra' }, lines.flatMap(([label, values]) => [
-      el('dt', { text: label }),
-      el('dd', { text: values.join(', ') }),
-    ]));
+    const values = infraValues(s);
+    if (!values.length) return el('span', { class: 'none', text: '—' });
+    return el('ul', { class: 'infra' }, values.map((v) => el('li', { text: v })));
   }
 
   function iconLink(kind, rawHref, label) {
@@ -587,8 +582,7 @@
     grid.append(dl([
       ['URL', safeUrl(s.url) ? el('a', { href: s.url, target: '_blank', rel: 'noopener', text: s.url }) : (s.url || '未設定')],
       ['公開日', fmtDate(s.releasedOn)],
-      ['配信先', infraHosting(s).join(', ') || '不明'],
-      ['DB', infraDatabase(s).join(', ') || '不明'],
+      ['インフラ', infraValues(s).join(', ') || '不明'],
       ['技術', (s.tags && s.tags.length) ? tagList(s.tags) : null],
     ]));
 

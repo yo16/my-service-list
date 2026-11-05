@@ -108,14 +108,9 @@
             <summary>任意の項目（自動で取れる値を上書きしたいときだけ）</summary>
             <div class="field"><label for="f-url">URL</label><input id="f-url" name="url" type="url" placeholder="https://"></div>
             <div class="field">
-              <label for="f-hosting">配信先</label>
-              <input id="f-hosting" name="hosting" type="text" maxlength="200" placeholder="例: GCE、Xserver" autocomplete="off">
-              <p class="hint">空なら自動で判定します。GCE やレンタルサーバーは判定できないので、ここに入れます。複数あるときはカンマで区切ります。</p>
-            </div>
-            <div class="field">
-              <label for="f-database">DB</label>
-              <input id="f-database" name="database" type="text" maxlength="200" placeholder="例: Cloud SQL" autocomplete="off">
-              <p class="hint">空なら自動で判定します。複数あるときはカンマで区切ります。</p>
+              <label for="f-infra">インフラの追加分</label>
+              <input id="f-infra" name="infra" type="text" maxlength="500" placeholder="例: GCE, Cloud SQL, Google Maps API" autocomplete="off">
+              <p class="hint">自動で判定した結果に足します。カンマで区切って何でも入れられます。判定が間違っているときは -Cloudflare のように頭に - を付けると除けます。</p>
             </div>
             <div class="field"><label for="f-description">説明</label><input id="f-description" name="description" type="text" maxlength="300"></div>
             <div class="field"><label for="f-released">公開日</label><input id="f-released" name="released_on" type="date"></div>
@@ -170,9 +165,9 @@
       { key: 'paused', label: '休止' },
       { key: 'retired', label: '終了' },
     ];
-    const FIELDS = ['name', 'stage', 'github_repo', 'url', 'hosting', 'database', 'description', 'released_on', 'uptimerobot_monitor_id', 'note'];
-    const OPTIONAL = ['url', 'hosting', 'database', 'description', 'released_on', 'uptimerobot_monitor_id', 'note'];
-    // hosting と database は配列で保存している。フォームではカンマ区切りの文字列にする
+    const FIELDS = ['name', 'stage', 'github_repo', 'url', 'infra', 'description', 'released_on', 'uptimerobot_monitor_id', 'note'];
+    const OPTIONAL = ['url', 'infra', 'description', 'released_on', 'uptimerobot_monitor_id', 'note'];
+    // infra は配列で保存している。フォームではカンマ区切りの文字列にする
     const fieldText = (v) => (Array.isArray(v) ? v.join(', ') : v === null || v === undefined ? '' : String(v));
     const $ = (s) => document.querySelector(s);
     const state = { services: [], editingId: null, previewSeq: 0 };
@@ -373,8 +368,7 @@
                 : '（なし。GitHub の About で Website を設定するか、下の任意の項目で URL を入れる）'),
             el('dt', { text: '技術' }), el('dd', {},
               tags.length ? el('div', { class: 'tags' }, ...tags.map((t) => el('span', { class: 'tag', text: t }))) : '（なし）'),
-            el('dt', { text: '配信先' }), el('dd', { text: r.infra.hosting.join(', ') || '（判定できず。任意の項目に入力できます）' }),
-            el('dt', { text: 'DB' }), el('dd', { text: r.infra.database.join(', ') || '（判定できず。DB があれば任意の項目に入力できます）' }),
+            el('dt', { text: 'インフラ' }), el('dd', { text: r.infra.join(', ') || '（判定できず。任意の項目に入力できます）' }),
             el('dt', { text: '最終 push' }), el('dd', { text: fmtWhen(r.pushedAt) || '（なし）' }),
           ),
         );

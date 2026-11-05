@@ -21,7 +21,7 @@ import { cp, mkdir, rm, writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pickLanguages, mergeTags } from './lib/tags.mjs';
-import { probeSite, readRepoSignals, detectInfra } from './lib/infra.mjs';
+import { probeSite, readRepoSignals, detectInfra, applyManualInfra } from './lib/infra.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SITE_DIR = path.join(ROOT, 'site');
@@ -188,12 +188,8 @@ function matchMonitor(row, monitors, serviceUrl) {
 
 // ---------- 結合 ----------
 
-// インフラを決める。手入力（Supabase の hosting、database）があればその項目は判定より優先する
+// インフラを決める。判定の結果に手入力（Supabase の infra）を重ねる
 async function resolveInfra(row, repo, url) {
-  const manualHosting = Array.isArray(row.hosting) ? row.hosting : [];
-  const manualDatabase = Array.isArray(row.database) ? row.database : [];
-  if (manualHosting.length && manualDatabase.length) return { hosting: manualHosting, database: manualDatabase };
-
   const site = await probeSite(url, { userAgent: 'my-service-list-sync' });
   if (url && !site) warn(`#${row.id}: サイトに接続できないので、応答からは配信先を判定しません`);
   let signals = null;
@@ -204,11 +200,7 @@ async function resolveInfra(row, repo, url) {
       warn(`#${row.id}: リポジトリの中身を読めないので、ファイルからは判定しません: ${e.message}`);
     }
   }
-  const detected = detectInfra({ site, repo: signals, topics: repo ? repo.topics : [] });
-  return {
-    hosting: manualHosting.length ? manualHosting : detected.hosting,
-    database: manualDatabase.length ? manualDatabase : detected.database,
-  };
+  return applyManualInfra(detectInfra({ site, repo: signals, topics: repo ? repo.topics : [] }), row.infra);
 }
 
 function buildService(row, repo, monitor, ratio24h, infra) {

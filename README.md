@@ -1,6 +1,6 @@
 # my-service-list
 
-作ったウェブサービスのマスタ管理と状態管理。通し番号、開発段階、インフラ（配信先と DB）、技術タグ、公開日、死活状況を 1 つの表で見る。
+作ったウェブサービスのマスタ管理と状態管理。通し番号、開発段階、インフラ（配信先、DB、外部サービスなど）、技術タグ、公開日、死活状況を 1 つの表で見る。
 
 - マスタは Supabase の `services` テーブルに置く。追加と編集は、自分の PC で動かす登録画面（`node scripts/admin.mjs`）で行う。
 - GitHub Actions の同期ジョブが毎時、GitHub API（リポジトリの URL、Topics、使用言語、Release、最終 push）と UptimeRobot API v3（死活、24 時間の稼働率）を取り、結合した JSON をパスフレーズで暗号化して GitHub Pages に配置する。
@@ -16,7 +16,7 @@
 | `supabase/schema.sql` | `services` テーブルの定義。Supabase の SQL Editor で実行する |
 | `scripts/build.mjs` | 同期スクリプト。Node 22 以上、依存ライブラリなし |
 | `scripts/lib/tags.mjs` | 技術タグの決め方（GitHub の Topics と使用言語の結合） |
-| `scripts/lib/infra.mjs` | インフラの判定（サイトの応答ヘッダーとリポジトリのファイルから配信先と DB を推定） |
+| `scripts/lib/infra.mjs` | インフラの判定（サイトの応答ヘッダーとリポジトリのファイルからインフラを推定） |
 | `scripts/admin.mjs` | ローカルの登録画面のサーバー。Node 22 以上、依存ライブラリなし |
 | `admin/index.html` | 登録画面の HTML。`scripts/admin.mjs` が配信する。Pages には配置されない |
 | `.env.example` | 登録画面が読む `.env` の見本 |
@@ -86,7 +86,7 @@ Secrets を登録するまで、同期ジョブは失敗にならず何もせず
 
 - 段階を変えるときや項目を直すときは、登録画面の一覧で「編集」を押し、直して「更新する」を押す。
 - GitHub 側で About の Website にサービスの URL を入れると、一覧のリンクと UptimeRobot の照合に使われる。Topics に枠組みやサービス名（例: nextjs、supabase）を入れると技術タグに加わる。
-- 配信先と DB は同期のときに自動で判定する。GCE、VPS、レンタルサーバー、Cloud SQL は判定できないので、編集画面の「任意の項目」にある配信先と DB に入れる。入れた値が判定より優先する。
+- インフラは同期のときに自動で判定する。GCE、VPS、レンタルサーバー、Cloud SQL など判定できないものは、編集画面の「任意の項目」にある「インフラの追加分」にカンマ区切りで入れる。判定の結果に足される。判定が間違っているときは、-Cloudflare のように頭に - を付けると除ける。
 - 公開中のサービスは、UptimeRobot に同じ URL の監視を足すと死活が表に出る。URL で自動的に照合される。照合できないときは、編集画面の「任意の項目」にある UptimeRobot の monitor ID を入れる。
 
 ## ローカルで確かめる

@@ -171,10 +171,8 @@ function validateService(input, { partial = false } = {}) {
     if (v && !/^\d+$/.test(v)) throw new HttpError(400, 'UptimeRobot の monitor ID は数字で入力してください');
     out.uptimerobot_monitor_id = v ? Number(v) : null;
   }
-  // カンマ区切りで複数入れられる。空なら配列を空にして、同期のときの自動判定に任せる
-  for (const k of ['hosting', 'database']) {
-    if (has(k)) out[k] = [...new Set(str(k).split(/[,、]/).map((s) => s.trim()).filter(Boolean))];
-  }
+  // カンマ区切りで何でも入れられる。同期のときに判定の結果へ足す。-Name は判定の結果から除く
+  if (has('infra')) out.infra = [...new Set(str('infra').split(/[,、]/).map((s) => s.trim()).filter(Boolean))];
   return out;
 }
 
