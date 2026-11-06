@@ -2,7 +2,7 @@
 
 作成したウェブサービスの一覧を、1 つの表で見るためのサイトの設計。マスタは Supabase、死活は UptimeRobot、リポジトリ情報は GitHub から取り、GitHub Pages に限定公開する。
 
-最終更新: 2026-11-05
+最終更新: 2026-11-06
 
 ## 1. 目的と範囲
 
@@ -48,6 +48,23 @@
 - マスタの追加と編集は、自分の PC で動かす登録画面（6.3）で行う。Supabase の鍵はその PC のサーバー側で使うだけで、ブラウザには渡さない。
 - 公開リポジトリなので、サービス名を含むデータは **コミットしない**。同期ジョブが生成した暗号化済み JSON を Pages のアーティファクトとして配置するだけにする。
 - 同期ジョブの結果を Supabase に書き戻さない。Supabase は人が編集するマスタだけを持ち、派生データは毎回作り直す。
+
+### 2.1 使っている外部サービス
+
+このシステム自体が使う外部のサービスは次のとおり。npm の依存はなく、CDN や外部フォント、アクセス解析も使わない（一覧ページは CSP で通信を同じオリジンに限っている）。
+
+| サービス | 用途 | 使う場所 | 認証 |
+|---|---|---|---|
+| Supabase（PostgREST の REST API） | マスタ `services` テーブルの保存と読み書き | 同期ジョブ（読む）、登録画面（読み書き） | secret key（`SUPABASE_SERVICE_ROLE_KEY`） |
+| GitHub REST API（`api.github.com`） | リポジトリの情報、Topics、使用言語、Release、ファイル一覧と中身の取得 | 同期ジョブ、登録画面 | 同期ジョブは `GH_READ_TOKEN`、なければ `GITHUB_TOKEN`。登録画面は `GH_READ_TOKEN`、`GITHUB_TOKEN`、gh CLI のログインの順。どれもなければ無認証 |
+| GitHub Actions | 同期ジョブの実行（毎時、手動、push 時） | `.github/workflows/sync.yml` | リポジトリの Secrets |
+| GitHub Pages | 一覧ページと暗号化済み `data.enc.json` の配信 | `actions/upload-pages-artifact`、`actions/deploy-pages` | Actions の `id-token: write` |
+| GitHub CLI（`gh`） | 登録画面から同期ジョブを起動する（`gh workflow run`）。GitHub API のトークンの取得にも使う | 登録画面 | gh のログイン |
+| UptimeRobot API v3（`api.uptimerobot.com`） | 死活、直近 24 時間の稼働率、最後の障害の取得 | 同期ジョブ | 読み取り専用キー（`UPTIMEROBOT_API_KEY`） |
+
+- 鍵の置き場所は 4 章の Secrets と、登録画面を動かす PC の `.env`。
+- このほか、インフラの判定（3.4）のために、登録した各サービスのサイトへ HTTP でアクセスして応答ヘッダーを見る。これは外部サービスの利用ではなく、監視対象への問い合わせである。
+- 表の `infra` 列に出る Vercel や Firebase などは、一覧に載せた各サービスのインフラであり、このシステムが使うものではない。
 
 ## 3. データ
 
