@@ -128,9 +128,9 @@ const DATABASE_ENGINE_PACKAGES = {
 
 /** 配信先と DB のどちらでもないサービス。依存パッケージ名（npm と PyPI）から決める */
 const OTHER_PACKAGES = {
-  '@google-cloud/functions-framework': 'Cloud Functions',
-  'functions-framework': 'Cloud Functions',
-  'firebase-functions': 'Cloud Functions',
+  '@google-cloud/functions-framework': 'Google Cloud Functions',
+  'functions-framework': 'Google Cloud Functions',
+  'firebase-functions': 'Google Cloud Functions',
   '@googlemaps/js-api-loader': 'Google Maps API',
   '@googlemaps/google-maps-services-js': 'Google Maps API',
   '@react-google-maps/api': 'Google Maps API',
@@ -140,7 +140,7 @@ const OTHER_PACKAGES = {
 
 /** 配信先と DB のどちらでもないサービスの Topics */
 const OTHER_TOPICS = {
-  'cloud-functions': 'Cloud Functions',
+  'cloud-functions': 'Google Cloud Functions',
   'google-maps': 'Google Maps API',
 };
 

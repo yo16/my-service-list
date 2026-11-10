@@ -69,7 +69,7 @@
         "latestRelease": null
       },
       "tags": ["sveltekit", "drizzle", "tailwind"],
-      "infra": ["Cloudflare Workers", "Supabase", "Cloud Functions"],
+      "infra": ["Cloudflare Workers", "Supabase", "Google Cloud Functions"],
       "releasedOn": null,
       "uptime": null,
       "note": null

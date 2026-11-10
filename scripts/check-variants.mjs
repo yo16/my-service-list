@@ -27,6 +27,9 @@ import { knownInfraLabels } from './lib/infra.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
+/** そろえる先として決めた表記。インフラの判定の表記（infra.mjs）にないものをここに足す */
+const PREFERRED_TERMS = ['フォームメーラー'];
+
 // ---------- 読み込み ----------
 
 async function loadDotEnv() {
@@ -159,7 +162,7 @@ function findVariantGroups(terms) {
     for (let j = i + 1; j < list.length; j++) {
       const x = list[i];
       const y = list[j];
-      if (x.known && y.known) continue; // 判定の表記どうしは別物として定義してある
+      if (x.known && y.known) continue; // そろえる表記どうしは別物として定義してある
       if (!x.base || !y.base) continue;
       if (x.base === y.base) {
         link(i, j, '大文字小文字、記号、空白、伸ばす音の違い');
@@ -205,7 +208,7 @@ function printGroups(title, groups, terms) {
     const width = Math.max(...g.members.map((m) => displayWidth(m)));
     for (const m of g.members) {
       const { uses, known } = terms.get(m);
-      const where = [...uses, ...(known ? ['インフラ判定の表記'] : [])].join(', ');
+      const where = [...uses, ...(known ? ['← そろえる表記'] : [])].join(', ');
       console.log(`     ${m}${' '.repeat(width - displayWidth(m))}   ${where}`);
     }
   });
@@ -239,7 +242,7 @@ async function main() {
     for (const v of s.infra || []) addTerm(words, String(v).replace(/^-/, ''), `${no} インフラ`);
     for (const v of s.tags || []) addTerm(tags, v, `${no} タグ`);
   }
-  for (const label of knownInfraLabels()) addTerm(words, label, null, true);
+  for (const label of [...knownInfraLabels(), ...PREFERRED_TERMS]) addTerm(words, label, null, true);
 
   console.log(`${services.length} 件のサービスを点検しました。表記ゆれの可能性がある組を出します（直すかどうかは目で確かめてください）。`);
   console.log('');

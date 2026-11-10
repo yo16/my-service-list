@@ -171,7 +171,7 @@ UptimeRobot API v3（`GET https://api.uptimerobot.com/v3/monitors?limit=200`、B
   4. リポジトリのファイル（`vercel.json`、`fly.toml`、wrangler の設定、`firebase.json` の `hosting` など）
   5. 手前に別のものが隠れていることがあるヘッダー（`server: cloudflare`、`server: Google Frontend` など）
 - **DB**: Topics、`supabase` フォルダ、`firestore.rules`、wrangler の `d1_databases` と `kv_namespaces`、依存パッケージ（`package.json` の dependencies、`requirements.txt`、`pyproject.toml`）から、当たったものをすべて採る。`pg` のように種類しか分からないものは、ほかに当たらないときだけ PostgreSQL などと出す。
-- **その他**: 依存パッケージと Topics から、Cloud Functions（`@google-cloud/functions-framework` など）と Google Maps API（`@googlemaps/js-api-loader` など）を採る。script タグで直接読み込む Google Maps は判定できない。
+- **その他**: 依存パッケージと Topics から、Google Cloud Functions（`@google-cloud/functions-framework` など）と Google Maps API（`@googlemaps/js-api-loader` など）を採る。script タグで直接読み込む Google Maps は判定できない。
 - **読む範囲**: Git Trees API でファイル一覧を取り、深さ 3 段（`apps/web/package.json` まで）を見る。`node_modules`、`docs`、`examples`、`tests` などは除く。ファイルの中身は種類ごとに 4 本まで、浅いものから読む。
 - **限界**: GCE、VPS、レンタルサーバー（`server: nginx` だけが見える）、Cloud SQL は印が出ないので判定できない。手で入れるか、Topics に付ける。空欄は「使っていない」と「判定できない」を区別しない。
 - **失敗の扱い**: サイトに接続できないとき（10 秒で打ち切る）やリポジトリを読めないときは、残りの手がかりで判定し、ジョブは止めない。警告には通し番号だけを出す。
@@ -279,7 +279,7 @@ UptimeRobot API v3（`GET https://api.uptimerobot.com/v3/monitors?limit=200`、B
 ### 6.4 表記ゆれの点検（ローカル）
 
 - 起動: `npm run check:variants`（中身は `node scripts/check-variants.mjs`）。画面は持たず、結果を端末に出す。Supabase は読むだけ。`--file <path>` で `data.json` の形のファイルを読むこともできる。
-- 比べる範囲: サービス名とインフラの追加分は同じ語彙として比べ、インフラの判定（3.4）が返す表記も正しい表記として加える。技術タグの追加分はタグどうしで比べる。判定の表記どうしは別物として定義してあるので比べない。
+- 比べる範囲: サービス名とインフラの追加分は同じ語彙として比べ、インフラの判定（3.4）が返す表記と、`check-variants.mjs` の `PREFERRED_TERMS` に書いた表記を「そろえる表記」として加える。技術タグの追加分はタグどうしで比べる。そろえる表記どうしは別物として定義してあるので比べない。
 - 候補にする組: 大文字小文字、全角半角、空白と記号、カタカナの伸ばす音（メーラー、メイラー、メーラ）の違いを消すと同じもの。GCP、Google、AWS などの社名と末尾の API を除くか、略称（GCE と Compute Engine など）をそろえると同じもの。1 文字（8 文字以上なら 2 文字）だけ違うもの。
 - 候補は目で確かめる前提で、別物（react と preact など）も出ることがある。直すのは登録画面で行う。
 
