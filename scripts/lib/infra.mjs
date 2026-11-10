@@ -146,6 +146,22 @@ const OTHER_TOPICS = {
 
 const unique = (list) => [...new Set(list)];
 
+/** 判定が返しうるインフラの名前の一覧。表記ゆれの点検（check-variants.mjs）で正しい表記として使う */
+export function knownInfraLabels() {
+  return unique([
+    ...HOST_SUFFIXES.map(([, label]) => label),
+    ...[...HEADER_RULES, ...WEAK_HEADER_RULES].map(([, , label]) => label),
+    ...HOSTING_FILES.map(([, label]) => label),
+    ...Object.values(HOSTING_TOPICS),
+    ...Object.values(DATABASE_TOPICS),
+    ...Object.values(DATABASE_PACKAGES),
+    ...Object.values(DATABASE_ENGINE_PACKAGES),
+    ...Object.values(OTHER_PACKAGES),
+    ...Object.values(OTHER_TOPICS),
+    'Firebase Hosting', 'Cloudflare Pages', 'Cloudflare Workers', 'Cloudflare', 'Cloudflare D1', 'Cloudflare KV',
+  ]);
+}
+
 /**
  * サイトに 1 回アクセスして、最後の URL のホスト名と応答ヘッダーを返す。
  * 認証で弾かれても、ヘッダーは配信先を示すので、状態コードは見ない。取れないときは null。

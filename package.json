@@ -1,0 +1,11 @@
+{
+  "name": "my-service-list",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check:variants": "node scripts/check-variants.mjs"
+  }
+}

@@ -276,6 +276,13 @@ UptimeRobot API v3（`GET https://api.uptimerobot.com/v3/monitors?limit=200`、B
 - Supabase へは PostgREST の REST API（`/rest/v1/services`）を `fetch` で直接叩く。secret key は `apikey` ヘッダーだけで送り、旧形式の service_role キーなら `Authorization` にも付ける（同期ジョブと同じ）。入力の検証（必須、段階の値、`owner/repo` の形、URL の形、実在する日付）はサーバー側で行い、空文字は `null` にして保存する。
 - 安全策: `127.0.0.1` にだけ待ち受ける。起動ごとに乱数トークンを作って HTML に埋め、API 呼び出しの `X-Admin-Token` を照合する。`Host` は HTML を含むすべての要求で照合する（別サイトからのフォーム送信や DNS rebinding への対策）。`frame-ancestors 'none'` で他サイトの iframe に入れさせない。書き込みは JSON だけ受け付ける。secret key はサーバー側で使うだけで、ブラウザには渡さない。
 
+### 6.4 表記ゆれの点検（ローカル）
+
+- 起動: `npm run check:variants`（中身は `node scripts/check-variants.mjs`）。画面は持たず、結果を端末に出す。Supabase は読むだけ。`--file <path>` で `data.json` の形のファイルを読むこともできる。
+- 比べる範囲: サービス名とインフラの追加分は同じ語彙として比べ、インフラの判定（3.4）が返す表記も正しい表記として加える。技術タグの追加分はタグどうしで比べる。判定の表記どうしは別物として定義してあるので比べない。
+- 候補にする組: 大文字小文字、全角半角、空白と記号、カタカナの伸ばす音（メーラー、メイラー、メーラ）の違いを消すと同じもの。GCP、Google、AWS などの社名と末尾の API を除くか、略称（GCE と Compute Engine など）をそろえると同じもの。1 文字（8 文字以上なら 2 文字）だけ違うもの。
+- 候補は目で確かめる前提で、別物（react と preact など）も出ることがある。直すのは登録画面で行う。
+
 ## 7. 運用
 
 ### 初回セットアップ
