@@ -111,6 +111,7 @@ const ALIASES = {
   gae: 'appengine',
   gcs: 'cloudstorage',
   gcf: 'cloudfunctions',
+  cloudrunfunctions: 'cloudfunctions', // 2024 年に Cloud Functions から改名された名前
   bq: 'bigquery',
   gke: 'kubernetesengine',
   s3: 'amazons3',
