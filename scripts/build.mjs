@@ -13,7 +13,9 @@
  * 環境変数:
  *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY   必須（--sample のときは不要）。鍵は secret key（sb_secret_...）か旧形式の service_role キー
  *   SITE_PASSPHRASE                           必須
- *   GH_READ_TOKEN                             任意。なければ GITHUB_TOKEN、それもなければ無認証（公開リポジトリのみ、60 回/時）
+ *   GH_READ_TOKEN_<持ち主>                    任意。その持ち主のリポジトリを読むトークン。持ち主の名前を英大文字にし、英数字以外を _ にする
+ *   GH_READ_TOKEN                             任意。持ち主ごとのトークンがないときに使う。なければ GITHUB_TOKEN、それもなければ無認証（公開リポジトリのみ、60 回/時）
+ *   ALL_SECRETS                               任意。Actions の Secrets 全体の JSON。上の GH_READ_TOKEN_<持ち主> をここからも探す
  *   UPTIMEROBOT_API_KEY                       任意。なければ全件「未監視」
  */
 
@@ -60,15 +62,35 @@ async function fetchServices() {
 
 // ---------- GitHub ----------
 
-const GH_TOKEN = env('GH_READ_TOKEN', { required: false }) || env('GITHUB_TOKEN', { required: false });
+// fine-grained PAT は 1 本で 1 つの持ち主（個人か 1 つの組織）しか読めないので、持ち主ごとのトークンを使い分ける。
+// GH_READ_TOKEN_<持ち主> は、持ち主の名前を英大文字にし、英数字以外を _ にした名前（例: my-org → GH_READ_TOKEN_MY_ORG）。
+// Actions では、持ち主の名前をワークフローに書かずに済むよう、Secrets 全体を ALL_SECRETS（JSON）で受け取って探す。
+const ALL_SECRETS = (() => {
+  try {
+    return JSON.parse(process.env.ALL_SECRETS || '{}') || {};
+  } catch {
+    return {};
+  }
+})();
+const secret = (name) => process.env[name] || ALL_SECRETS[name] || null;
+const ownerTokenName = (owner) => `GH_READ_TOKEN_${owner.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`;
+const ownerTokenCount = new Set(
+  [...Object.keys(process.env), ...Object.keys(ALL_SECRETS)].filter((k) => k.startsWith('GH_READ_TOKEN_') && secret(k)),
+).size;
 
-async function ghGet(pathname) {
+/** リポジトリ（owner/repo）を読むためのトークン。持ち主ごとのもの → GH_READ_TOKEN → GITHUB_TOKEN の順 */
+function tokenFor(fullName) {
+  const owner = String(fullName).split('/')[0] || '';
+  return (owner && secret(ownerTokenName(owner))) || secret('GH_READ_TOKEN') || secret('GITHUB_TOKEN');
+}
+
+async function ghGet(pathname, token) {
   const headers = {
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
     'User-Agent': 'my-service-list-sync',
   };
-  if (GH_TOKEN) headers.Authorization = `Bearer ${GH_TOKEN}`;
+  if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(`https://api.github.com${pathname}`, { headers });
   if (res.status === 404) return null;
   if (!res.ok) {
@@ -84,10 +106,11 @@ async function ghGet(pathname) {
 }
 
 async function fetchRepo(fullName) {
-  const repo = await ghGet(`/repos/${fullName}`);
+  const token = tokenFor(fullName);
+  const repo = await ghGet(`/repos/${fullName}`, token);
   if (!repo) return null;
-  const releases = (await ghGet(`/repos/${fullName}/releases?per_page=100`)) || [];
-  const languages = pickLanguages((await ghGet(`/repos/${fullName}/languages`)) || {});
+  const releases = (await ghGet(`/repos/${fullName}/releases?per_page=100`, token)) || [];
+  const languages = pickLanguages((await ghGet(`/repos/${fullName}/languages`, token)) || {});
   const published = releases
     .filter((r) => !r.draft && r.published_at)
     .sort((a, b) => a.published_at.localeCompare(b.published_at));
@@ -195,7 +218,8 @@ async function resolveInfra(row, repo, url) {
   let signals = null;
   if (repo) {
     try {
-      signals = await readRepoSignals(ghGet, repo.fullName);
+      const token = tokenFor(repo.fullName);
+      signals = await readRepoSignals((p) => ghGet(p, token), repo.fullName);
     } catch (e) {
       warn(`#${row.id}: リポジトリの中身を読めないので、ファイルからは判定しません: ${e.message}`);
     }
@@ -246,6 +270,7 @@ async function buildData() {
 
   const rows = await fetchServices();
   log(`Supabase から ${rows.length} 件を読みました`);
+  log(`持ち主ごとの GitHub トークン: ${ownerTokenCount} 本`);
 
   let monitors = [];
   try {
@@ -261,7 +286,7 @@ async function buildData() {
     if (row.github_repo) {
       try {
         repo = await fetchRepo(row.github_repo);
-        if (!repo) warn(`#${row.id}: GitHub リポジトリが見つかりません（非公開なら GH_READ_TOKEN が必要です。名前も確かめてください）`);
+        if (!repo) warn(`#${row.id}: GitHub リポジトリが見つかりません（非公開なら、持ち主に合う GH_READ_TOKEN_<持ち主> か GH_READ_TOKEN が必要です。名前も確かめてください）`);
       } catch (e) {
         warn(`#${row.id}: GitHub の取得に失敗しました: ${e.message}`);
       }

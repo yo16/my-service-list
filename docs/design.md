@@ -56,7 +56,7 @@
 | サービス | 用途 | 使う場所 | 認証 |
 |---|---|---|---|
 | Supabase（PostgREST の REST API） | マスタ `services` テーブルの保存と読み書き | 同期ジョブ（読む）、登録画面（読み書き） | secret key（`SUPABASE_SERVICE_ROLE_KEY`） |
-| GitHub REST API（`api.github.com`） | リポジトリの情報、Topics、使用言語、Release、ファイル一覧と中身の取得 | 同期ジョブ、登録画面 | 同期ジョブは `GH_READ_TOKEN`、なければ `GITHUB_TOKEN`。登録画面は `GH_READ_TOKEN`、`GITHUB_TOKEN`、gh CLI のログインの順。どれもなければ無認証 |
+| GitHub REST API（`api.github.com`） | リポジトリの情報、Topics、使用言語、Release、ファイル一覧と中身の取得 | 同期ジョブ、登録画面 | 同期ジョブは持ち主ごとの `GH_READ_TOKEN_<持ち主>`、なければ `GH_READ_TOKEN`、それもなければ `GITHUB_TOKEN`。登録画面は `GH_READ_TOKEN`、`GITHUB_TOKEN`、gh CLI のログインの順。どれもなければ無認証 |
 | GitHub Actions | 同期ジョブの実行（毎時、手動、push 時） | `.github/workflows/sync.yml` | リポジトリの Secrets |
 | GitHub Pages | 一覧ページと暗号化済み `data.enc.json` の配信 | `actions/upload-pages-artifact`、`actions/deploy-pages` | Actions の `id-token: write` |
 | GitHub CLI（`gh`） | 登録画面から同期ジョブを起動する（`gh workflow run`）。GitHub API のトークンの取得にも使う | 登録画面 | gh のログイン |
@@ -197,7 +197,8 @@ UptimeRobot API v3（`GET https://api.uptimerobot.com/v3/monitors?limit=200`、B
 |---|---|
 | `SUPABASE_URL` | Supabase プロジェクトの URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase の secret key（`sb_secret_...`）。旧形式の service_role キーでも動く。いずれも RLS を通過する |
-| `GH_READ_TOKEN` | fine-grained PAT。対象リポジトリの Metadata と Contents の読み取り。非公開リポジトリを含めるために必要。公開リポジトリだけなら省略可（レート制限が 60 回/時になる） |
+| `GH_READ_TOKEN_<持ち主>` | fine-grained PAT。その持ち主（個人か組織）の対象リポジトリの Metadata と Contents の読み取り。fine-grained PAT は 1 本で 1 つの持ち主しか対象にできないので、持ち主ごとに置く。`<持ち主>` は英大文字にし、英数字以外を `_` にする。持ち主の名前をワークフローに書かないよう、Secrets 全体を `toJSON(secrets)` で `ALL_SECRETS` に渡し、`build.mjs` が名前で探す |
+| `GH_READ_TOKEN` | 持ち主に合う `GH_READ_TOKEN_<持ち主>` がないときに使う fine-grained PAT。どちらもなければ `GITHUB_TOKEN`（このリポジトリ以外の非公開リポジトリは読めない）。公開リポジトリだけなら省略可 |
 | `UPTIMEROBOT_API_KEY` | UptimeRobot の読み取り専用（read-only）キー |
 | `SITE_PASSPHRASE` | 一覧ページを開くためのパスフレーズ |
 

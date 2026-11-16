@@ -33,7 +33,7 @@
    - **URL**: 画面上部の「Connect」ボタンで開くダイアログに出る。`https://<プロジェクトの参照 ID>.supabase.co` の形。
    - **secret key**: 左下の歯車 Settings → API Keys →「Publishable and secret API keys」タブにある、`sb_secret_` で始まる鍵。「Create new API keys」ボタンしか出ていなければ、押して作る。
 2. **UptimeRobot**: Integrations → API で読み取り専用（read-only）の API キーを作る。
-3. **GitHub の PAT**: Settings → Developer settings → Fine-grained tokens で、一覧に載せるリポジトリを選び、Metadata と Contents を Read にしたトークンを作る。公開リポジトリだけなら省略できる。
+3. **GitHub の PAT**: 非公開リポジトリを一覧に載せるなら、「[非公開リポジトリを同期ジョブで読めるようにする](#非公開リポジトリを同期ジョブで読めるようにする)」の手順でトークンを作る。公開リポジトリだけなら省略できる。
 4. **Secrets**: このリポジトリの Settings → Secrets and variables → Actions に次を登録する。
 
    | 名前 | 値 |
@@ -41,7 +41,7 @@
    | `SUPABASE_URL` | Supabase プロジェクトの URL |
    | `SUPABASE_SERVICE_ROLE_KEY` | 手順 1 で控えた secret key（`sb_secret_` で始まる値） |
    | `UPTIMEROBOT_API_KEY` | UptimeRobot の読み取り専用キー（任意。なければ全件「未監視」） |
-   | `GH_READ_TOKEN` | 手順 3 のトークン（任意） |
+   | `GH_READ_TOKEN_<持ち主>` | 手順 3 のトークン。持ち主ごとに 1 つ（任意） |
    | `SITE_PASSPHRASE` | 一覧ページを開くパスフレーズ。推測されにくい 20 文字以上にする |
 
 5. **Pages**: Settings → Pages で Source を「GitHub Actions」にする。
@@ -69,7 +69,7 @@ Secrets を登録するまで、同期ジョブは失敗にならず何もせず
 
 ### 1 件登録する
 
-登録するリポジトリが非公開なら、先に https://github.com/settings/personal-access-tokens で `GH_READ_TOKEN` のトークンを開き、Repository access にそのリポジトリを足す。足さないと、同期ジョブがそのリポジトリを読めない。登録画面は自分の gh のログインで読むので、足していなくても情報が表示される点に注意する。
+登録するリポジトリが非公開なら、先に「[非公開リポジトリを同期ジョブで読めるようにする](#非公開リポジトリを同期ジョブで読めるようにする)」の手順で、同期ジョブがそのリポジトリを読めるようにする。登録画面は自分の gh のログインで読むので、読めるようにしていなくても情報が表示される点に注意する。
 
 1. リポジトリのフォルダで次を実行する。ブラウザで `http://127.0.0.1:8787/` が開く。開かなければ、この URL を自分で開く。
 
@@ -90,6 +90,29 @@ Secrets を登録するまで、同期ジョブは失敗にならず何もせず
 - GitHub 側で About の Website にサービスの URL を入れると、一覧のリンクと UptimeRobot の照合に使われる。Topics に枠組みやサービス名（例: nextjs、supabase）を入れると技術タグに加わる。
 - インフラは同期のときに自動で判定する。GCE、VPS、レンタルサーバー、Cloud SQL など判定できないものは、編集画面の「任意の項目」にある「インフラの追加分」にカンマ区切りで入れる。判定の結果に足される。判定が間違っているときは、-Cloudflare のように頭に - を付けると除ける。
 - 公開中のサービスは、UptimeRobot に同じ URL の監視を足すと死活が表に出る。URL で自動的に照合される。照合できないときは、編集画面の「任意の項目」にある UptimeRobot の monitor ID を入れる。
+
+## 非公開リポジトリを同期ジョブで読めるようにする
+
+同期ジョブは、非公開リポジトリを fine-grained PAT（読み取り専用のトークン）で読む。1 本のトークンで読めるのは 1 つの持ち主（個人か 1 つの組織）のリポジトリだけなので、持ち主ごとにトークンを作り、`GH_READ_TOKEN_<持ち主>` という名前の Secret に登録する。`<持ち主>` は、持ち主の名前を英大文字にし、`-` などの英数字以外を `_` にしたもの（例: `my-org` なら `GH_READ_TOKEN_MY_ORG`）。持ち主に合う Secret がないリポジトリは `GH_READ_TOKEN` で読む。
+
+その持ち主のトークンがまだないときは、次の手順で作る。
+
+1. https://github.com/settings/personal-access-tokens/new を開く。
+2. Token name に `my-service-list <持ち主>` と入れる。
+3. Resource owner で持ち主を選ぶ。
+4. Expiration で「No expiration」を選ぶ。
+5. Repository access で「Only select repositories」を選び、一覧に載せるリポジトリをすべて選ぶ。
+6. Permissions の「Add permissions」で Contents を足し、「Read-only」にする。Metadata の Read-only は自動で付く。
+7. 「Generate token」を押し、出てきたトークンをコピーする。持ち主が組織で、承認待ち（pending）と出たときは、その組織の Settings → Personal access tokens → Pending requests で承認する。
+8. https://github.com/yo16/my-service-list/settings/secrets/actions/new を開く。
+9. Name に `GH_READ_TOKEN_<持ち主>` を入れ、Secret にトークンを貼り、「Add secret」を押す。
+
+その持ち主のトークンがすでにあり、リポジトリを足すだけのときは、次の手順で行う。
+
+1. https://github.com/settings/personal-access-tokens を開き、その持ち主のトークンの名前を押す。
+2. 「Edit」を押す。
+3. Repository access で、足すリポジトリを選ぶ。
+4. 「Update」を押す。
 
 ## 表記ゆれを点検する
 
