@@ -57,8 +57,16 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           GH_READ_TOKEN: ${{ secrets.GH_READ_TOKEN }}
-          # 持ち主ごとのトークン（GH_READ_TOKEN_<持ち主>）を探すため。持ち主の名前をここに書かずに済む
-          ALL_SECRETS: ${{ toJSON(secrets) }}
+          # 持ち主ごとのトークン。値は「持ち主=トークン」。持ち主の名前をここに書かずに済むよう番号で受け取る
+          GH_READ_TOKEN_1: ${{ secrets.GH_READ_TOKEN_1 }}
+          GH_READ_TOKEN_2: ${{ secrets.GH_READ_TOKEN_2 }}
+          GH_READ_TOKEN_3: ${{ secrets.GH_READ_TOKEN_3 }}
+          GH_READ_TOKEN_4: ${{ secrets.GH_READ_TOKEN_4 }}
+          GH_READ_TOKEN_5: ${{ secrets.GH_READ_TOKEN_5 }}
+          GH_READ_TOKEN_6: ${{ secrets.GH_READ_TOKEN_6 }}
+          GH_READ_TOKEN_7: ${{ secrets.GH_READ_TOKEN_7 }}
+          GH_READ_TOKEN_8: ${{ secrets.GH_READ_TOKEN_8 }}
+          GH_READ_TOKEN_9: ${{ secrets.GH_READ_TOKEN_9 }}
           GITHUB_TOKEN: ${{ github.token }}
           UPTIMEROBOT_API_KEY: ${{ secrets.UPTIMEROBOT_API_KEY }}
           SITE_PASSPHRASE: ${{ secrets.SITE_PASSPHRASE }}

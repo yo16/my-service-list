@@ -41,7 +41,7 @@
    | `SUPABASE_URL` | Supabase プロジェクトの URL |
    | `SUPABASE_SERVICE_ROLE_KEY` | 手順 1 で控えた secret key（`sb_secret_` で始まる値） |
    | `UPTIMEROBOT_API_KEY` | UptimeRobot の読み取り専用キー（任意。なければ全件「未監視」） |
-   | `GH_READ_TOKEN_<持ち主>` | 手順 3 のトークン。持ち主ごとに 1 つ（任意） |
+   | `GH_READ_TOKEN_1` など | 手順 3 のトークン。持ち主ごとに 1 つ（任意） |
    | `SITE_PASSPHRASE` | 一覧ページを開くパスフレーズ。推測されにくい 20 文字以上にする |
 
 5. **Pages**: Settings → Pages で Source を「GitHub Actions」にする。
@@ -93,7 +93,7 @@ Secrets を登録するまで、同期ジョブは失敗にならず何もせず
 
 ## 非公開リポジトリを同期ジョブで読めるようにする
 
-同期ジョブは、非公開リポジトリを fine-grained PAT（読み取り専用のトークン）で読む。1 本のトークンで読めるのは 1 つの持ち主（個人か 1 つの組織）のリポジトリだけなので、持ち主ごとにトークンを作り、`GH_READ_TOKEN_<持ち主>` という名前の Secret に登録する。`<持ち主>` は、持ち主の名前を英大文字にし、`-` などの英数字以外を `_` にしたもの（例: `my-org` なら `GH_READ_TOKEN_MY_ORG`）。持ち主に合う Secret がないリポジトリは `GH_READ_TOKEN` で読む。
+同期ジョブは、非公開リポジトリを fine-grained PAT（読み取り専用のトークン）で読む。1 本のトークンで読めるのは 1 つの持ち主（個人か 1 つの組織）のリポジトリだけなので、持ち主ごとにトークンを作り、`GH_READ_TOKEN_1`〜`GH_READ_TOKEN_9` のうち空いている番号の Secret に、`持ち主=トークン` の形で登録する（例: `my-org=github_pat_xxxx`）。持ち主に合うトークンがないリポジトリは `GH_READ_TOKEN` で読む。
 
 その持ち主のトークンがまだないときは、次の手順で作る。
 
@@ -105,7 +105,8 @@ Secrets を登録するまで、同期ジョブは失敗にならず何もせず
 6. Permissions の「Add permissions」で Contents を足し、「Read-only」にする。Metadata の Read-only は自動で付く。
 7. 「Generate token」を押し、出てきたトークンをコピーする。持ち主が組織で、承認待ち（pending）と出たときは、その組織の Settings → Personal access tokens → Pending requests で承認する。
 8. https://github.com/yo16/my-service-list/settings/secrets/actions/new を開く。
-9. Name に `GH_READ_TOKEN_<持ち主>` を入れ、Secret にトークンを貼り、「Add secret」を押す。
+9. Name に、`GH_READ_TOKEN_1`〜`GH_READ_TOKEN_9` のうち空いている番号の名前を入れる。登録済みの番号は https://github.com/yo16/my-service-list/settings/secrets/actions で分かる。
+10. Secret に `持ち主=` と入れ、続けてトークンを貼り、「Add secret」を押す。
 
 その持ち主のトークンがすでにあり、リポジトリを足すだけのときは、次の手順で行う。
 

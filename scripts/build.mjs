@@ -13,9 +13,8 @@
  * 環境変数:
  *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY   必須（--sample のときは不要）。鍵は secret key（sb_secret_...）か旧形式の service_role キー
  *   SITE_PASSPHRASE                           必須
- *   GH_READ_TOKEN_<持ち主>                    任意。その持ち主のリポジトリを読むトークン。持ち主の名前を英大文字にし、英数字以外を _ にする
+ *   GH_READ_TOKEN_1 〜 GH_READ_TOKEN_9         任意。持ち主ごとのトークン。値は「持ち主=トークン」（例: my-org=github_pat_xxx）
  *   GH_READ_TOKEN                             任意。持ち主ごとのトークンがないときに使う。なければ GITHUB_TOKEN、それもなければ無認証（公開リポジトリのみ、60 回/時）
- *   ALL_SECRETS                               任意。Actions の Secrets 全体の JSON。上の GH_READ_TOKEN_<持ち主> をここからも探す
  *   UPTIMEROBOT_API_KEY                       任意。なければ全件「未監視」
  */
 
@@ -63,25 +62,24 @@ async function fetchServices() {
 // ---------- GitHub ----------
 
 // fine-grained PAT は 1 本で 1 つの持ち主（個人か 1 つの組織）しか読めないので、持ち主ごとのトークンを使い分ける。
-// GH_READ_TOKEN_<持ち主> は、持ち主の名前を英大文字にし、英数字以外を _ にした名前（例: my-org → GH_READ_TOKEN_MY_ORG）。
-// Actions では、持ち主の名前をワークフローに書かずに済むよう、Secrets 全体を ALL_SECRETS（JSON）で受け取って探す。
-const ALL_SECRETS = (() => {
-  try {
-    return JSON.parse(process.env.ALL_SECRETS || '{}') || {};
-  } catch {
-    return {};
-  }
-})();
-const secret = (name) => process.env[name] || ALL_SECRETS[name] || null;
-const ownerTokenName = (owner) => `GH_READ_TOKEN_${owner.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`;
-const ownerTokenCount = new Set(
-  [...Object.keys(process.env), ...Object.keys(ALL_SECRETS)].filter((k) => k.startsWith('GH_READ_TOKEN_') && secret(k)),
-).size;
+// 持ち主の名前をワークフローに書かずに済むよう、番号付きの Secret（GH_READ_TOKEN_1〜GH_READ_TOKEN_9）の値に
+// 「持ち主=トークン」と書く。持ち主を増やすときは、空いている番号に足すだけでよい。
+// Secrets 全体（toJSON(secrets)）をジョブに渡すと、実行が action_required で止まるので使わない。
+const OWNER_TOKEN_SLOTS = 9;
+const OWNER_TOKENS = new Map(
+  Array.from({ length: OWNER_TOKEN_SLOTS }, (_, i) => String(process.env[`GH_READ_TOKEN_${i + 1}`] || '').trim())
+    .filter((v) => v.includes('='))
+    .map((v) => {
+      const i = v.indexOf('=');
+      return [v.slice(0, i).trim().toLowerCase(), v.slice(i + 1).trim()];
+    })
+    .filter(([owner, token]) => owner && token),
+);
 
 /** リポジトリ（owner/repo）を読むためのトークン。持ち主ごとのもの → GH_READ_TOKEN → GITHUB_TOKEN の順 */
 function tokenFor(fullName) {
-  const owner = String(fullName).split('/')[0] || '';
-  return (owner && secret(ownerTokenName(owner))) || secret('GH_READ_TOKEN') || secret('GITHUB_TOKEN');
+  const owner = String(fullName).split('/')[0].toLowerCase();
+  return OWNER_TOKENS.get(owner) || env('GH_READ_TOKEN', { required: false }) || env('GITHUB_TOKEN', { required: false });
 }
 
 async function ghGet(pathname, token) {
@@ -270,7 +268,7 @@ async function buildData() {
 
   const rows = await fetchServices();
   log(`Supabase から ${rows.length} 件を読みました`);
-  log(`持ち主ごとの GitHub トークン: ${ownerTokenCount} 本`);
+  log(`持ち主ごとの GitHub トークン: ${OWNER_TOKENS.size} 本`);
 
   let monitors = [];
   try {
@@ -286,7 +284,7 @@ async function buildData() {
     if (row.github_repo) {
       try {
         repo = await fetchRepo(row.github_repo);
-        if (!repo) warn(`#${row.id}: GitHub リポジトリが見つかりません（非公開なら、持ち主に合う GH_READ_TOKEN_<持ち主> か GH_READ_TOKEN が必要です。名前も確かめてください）`);
+        if (!repo) warn(`#${row.id}: GitHub リポジトリが見つかりません（非公開なら、GH_READ_TOKEN_1〜9 のどれかにその持ち主のトークンを書くか、GH_READ_TOKEN が必要です。名前も確かめてください）`);
       } catch (e) {
         warn(`#${row.id}: GitHub の取得に失敗しました: ${e.message}`);
       }
