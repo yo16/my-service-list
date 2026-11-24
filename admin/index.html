@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="style.css">
   <style>
     /* 登録画面だけのスタイル。共通の見た目は style.css（一覧ページと同じもの）を使う */
+    .wrap { max-width: 1120px; } /* 一覧ページは列が多いので広げてある。登録画面は元の幅のままにする */
     main.admin { padding-bottom: 48px; }
     .admin-grid { display: grid; gap: 20px; align-items: start; }
     .admin-grid > * { min-width: 0; }
@@ -96,6 +97,10 @@
             <label for="f-stage">段階</label>
             <select id="f-stage" name="stage"></select>
           </div>
+          <div class="field" id="category-field" hidden>
+            <label for="f-category">区分</label>
+            <select id="f-category" name="category"></select>
+          </div>
           <div class="field">
             <label for="f-repo">GitHub リポジトリ</label>
             <input id="f-repo" name="github_repo" list="repo-list" placeholder="owner/repo（入力すると候補が出ます）" autocomplete="off" spellcheck="false">
@@ -165,7 +170,9 @@
       { key: 'paused', label: '休止' },
       { key: 'retired', label: '終了' },
     ];
+    // 区分（category）は、Supabase に区分の表があるときだけ init で足す
     const FIELDS = ['name', 'stage', 'github_repo', 'url', 'infra', 'description', 'released_on', 'uptimerobot_monitor_id', 'note'];
+    let defaultCategory = '';
     const OPTIONAL = ['url', 'infra', 'description', 'released_on', 'uptimerobot_monitor_id', 'note'];
     // infra は配列で保存している。フォームではカンマ区切りの文字列にする
     const fieldText = (v) => (Array.isArray(v) ? v.join(', ') : v === null || v === undefined ? '' : String(v));
@@ -230,6 +237,17 @@
       sel.value = 'planning';
     }
 
+    // 区分の表がまだ無い（スキーマを実行する前の）ときは、欄を出さず、値も送らない
+    function fillCategories(categories) {
+      if (!Array.isArray(categories) || !categories.length) return;
+      const sel = field('category');
+      sel.replaceChildren(...categories.map((c) => el('option', { value: c.key, text: c.label })));
+      defaultCategory = categories.some((c) => c.key === 'personal') ? 'personal' : categories[0].key;
+      sel.value = defaultCategory;
+      FIELDS.push('category');
+      $('#category-field').hidden = false;
+    }
+
     function readForm() {
       const out = {};
       for (const k of FIELDS) out[k] = field(k).value;
@@ -248,6 +266,7 @@
     function resetForm() {
       form.reset();
       field('stage').value = 'planning';
+      if (defaultCategory) field('category').value = defaultCategory;
       state.editingId = null;
       $('#form-title').textContent = 'サービスを登録する';
       $('#submit').textContent = '登録する';
@@ -492,6 +511,8 @@
       try {
         const cfg = await api('GET', '/api/config');
         $('#meta').textContent = `Supabase: ${cfg.supabaseHost}　GitHub: ${cfg.githubAuth}`;
+        fillCategories(cfg.categories);
+        markFormClean();
       } catch (err) {
         $('#meta').textContent = '';
         $('#fatal').textContent = `サーバーに接続できません: ${err.message}`;

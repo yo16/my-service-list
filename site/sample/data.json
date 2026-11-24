@@ -1,5 +1,23 @@
 {
   "generatedAt": "2026-11-03T06:00:00Z",
+  "months": {
+    "current": "2026-11",
+    "previous": "2026-10"
+  },
+  "categories": [
+    {
+      "key": "personal",
+      "label": "個人"
+    },
+    {
+      "key": "sample-studio",
+      "label": "サンプル工房"
+    },
+    {
+      "key": "sample-club",
+      "label": "サンプル同好会"
+    }
+  ],
   "services": [
     {
       "id": 1,
@@ -18,14 +36,44 @@
           "publishedAt": "2026-09-20T00:00:00Z"
         }
       },
-      "tags": ["nextjs"],
-      "infra": ["Vercel", "Supabase", "Google Maps API"],
+      "tags": [
+        "nextjs"
+      ],
+      "infra": [
+        "Vercel",
+        "Supabase",
+        "Google Maps API"
+      ],
       "releasedOn": "2025-04-01",
       "uptime": {
         "monitorId": 800000001,
         "status": "UP",
         "ratio24h": 100,
         "lastIncidentAt": "2026-08-02T03:10:00Z"
+      },
+      "category": "sample-studio",
+      "money": {
+        "current": {
+          "costJpy": 2480,
+          "revenueJpy": 5000,
+          "breakdown": {
+            "ホスティング": 1980,
+            "ドメイン": 500
+          }
+        },
+        "previous": {
+          "costJpy": 2480,
+          "revenueJpy": 3500,
+          "breakdown": {
+            "ホスティング": 1980,
+            "ドメイン": 500
+          }
+        }
+      },
+      "keys": {
+        "count": 4,
+        "nearestExpiry": "2026-12-10",
+        "checkedAt": "2026-11-20T03:00:00Z"
       },
       "note": null
     },
@@ -43,14 +91,40 @@
         "pushedAt": "2026-06-14T12:00:00Z",
         "latestRelease": null
       },
-      "tags": ["astro"],
-      "infra": ["Cloudflare Pages"],
+      "tags": [
+        "astro"
+      ],
+      "infra": [
+        "Cloudflare Pages"
+      ],
       "releasedOn": "2024-11-15",
       "uptime": {
         "monitorId": 800000002,
         "status": "DOWN",
         "ratio24h": 62.5,
         "lastIncidentAt": "2026-11-03T01:40:00Z"
+      },
+      "category": "personal",
+      "money": {
+        "current": {
+          "costJpy": 150,
+          "revenueJpy": 0,
+          "breakdown": {
+            "ドメイン": 150
+          }
+        },
+        "previous": {
+          "costJpy": 150,
+          "revenueJpy": 0,
+          "breakdown": {
+            "ドメイン": 150
+          }
+        }
+      },
+      "keys": {
+        "count": 1,
+        "nearestExpiry": null,
+        "checkedAt": "2026-11-20T03:00:00Z"
       },
       "note": "DNS の設定を見直す予定。"
     },
@@ -68,10 +142,34 @@
         "pushedAt": "2026-11-03T02:30:00Z",
         "latestRelease": null
       },
-      "tags": ["sveltekit", "drizzle", "tailwind"],
-      "infra": ["Cloudflare Workers", "Supabase", "Google Cloud Functions"],
+      "tags": [
+        "sveltekit",
+        "drizzle",
+        "tailwind"
+      ],
+      "infra": [
+        "Cloudflare Workers",
+        "Supabase",
+        "Google Cloud Functions"
+      ],
       "releasedOn": null,
       "uptime": null,
+      "category": "sample-club",
+      "money": {
+        "current": {
+          "costJpy": 1200,
+          "revenueJpy": 0,
+          "breakdown": {
+            "クラウド": 1200
+          }
+        },
+        "previous": null
+      },
+      "keys": {
+        "count": 6,
+        "nearestExpiry": "2027-03-31",
+        "checkedAt": "2026-11-20T03:00:00Z"
+      },
       "note": null
     },
     {
@@ -91,14 +189,33 @@
           "publishedAt": "2025-10-10T00:00:00Z"
         }
       },
-      "tags": ["python"],
-      "infra": ["Fly.io", "SQLite"],
+      "tags": [
+        "python"
+      ],
+      "infra": [
+        "Fly.io",
+        "SQLite"
+      ],
       "releasedOn": "2025-06-30",
       "uptime": {
         "monitorId": 800000004,
         "status": "PAUSED",
         "ratio24h": null,
         "lastIncidentAt": null
+      },
+      "category": "personal",
+      "money": {
+        "current": null,
+        "previous": {
+          "costJpy": 800,
+          "revenueJpy": 0,
+          "breakdown": null
+        }
+      },
+      "keys": {
+        "count": 2,
+        "nearestExpiry": "2026-11-15",
+        "checkedAt": "2026-11-20T03:00:00Z"
       },
       "note": null
     },
@@ -116,10 +233,21 @@
         "pushedAt": "2021-03-05T10:00:00Z",
         "latestRelease": null
       },
-      "tags": ["rails"],
-      "infra": ["Heroku", "PostgreSQL"],
+      "tags": [
+        "rails"
+      ],
+      "infra": [
+        "Heroku",
+        "PostgreSQL"
+      ],
       "releasedOn": "2019-01-20",
       "uptime": null,
+      "category": "personal",
+      "money": {
+        "current": null,
+        "previous": null
+      },
+      "keys": null,
       "note": "Heroku の無料枠の終了にあわせて停止。"
     },
     {
@@ -133,7 +261,43 @@
       "infra": [],
       "releasedOn": null,
       "uptime": null,
+      "category": "sample-club",
+      "money": {
+        "current": null,
+        "previous": null
+      },
+      "keys": null,
       "note": "まだリポジトリはない。"
+    }
+  ],
+  "sharedCosts": [
+    {
+      "month": "2026-11",
+      "provider": "Sample Hosting",
+      "account": "サンプル工房のチーム",
+      "category": "sample-studio",
+      "costJpy": 3000
+    },
+    {
+      "month": "2026-11",
+      "provider": "Sample DB",
+      "account": "個人の組織",
+      "category": null,
+      "costJpy": 3800
+    },
+    {
+      "month": "2026-10",
+      "provider": "Sample Hosting",
+      "account": "サンプル工房のチーム",
+      "category": "sample-studio",
+      "costJpy": 3000
+    },
+    {
+      "month": "2026-10",
+      "provider": "Sample DB",
+      "account": "個人の組織",
+      "category": null,
+      "costJpy": 3800
     }
   ]
 }

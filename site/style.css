@@ -80,7 +80,7 @@ button { font: inherit; color: inherit; }
 #app:focus { outline: none; }
 
 .wrap {
-  max-width: 1120px;
+  max-width: 1360px;
   margin: 0 auto;
   padding: 0 16px;
 }
@@ -117,6 +117,13 @@ button { font: inherit; color: inherit; }
   border-radius: 999px;
   color: var(--down);
   background: color-mix(in srgb, var(--down) 12%, transparent);
+  font-weight: 600;
+}
+.meta .expiry-count {
+  padding: 1px 8px;
+  border-radius: 999px;
+  color: var(--badge-paused-fg);
+  background: var(--badge-paused-bg);
   font-weight: 600;
 }
 
@@ -245,7 +252,55 @@ button { font: inherit; color: inherit; }
   box-shadow: inset 0 0 0 1px var(--accent); /* 色だけに頼らず、枠の太さでも選択中を示す */
 }
 .chip { font-family: var(--mono); font-size: 0.8rem; }
-.chip .count { margin-left: 4px; }
+.chip .count, .toggle .count { margin-left: 4px; }
+.toggle .count { font-size: 0.8rem; }
+.toggle .month-name { margin-left: 6px; font-family: var(--mono); font-size: 0.8rem; }
+
+/* ---------- 費用と収益の合計 ---------- */
+
+.summary {
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.summary-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+.summary h2, .shared h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 650;
+}
+.summary-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 28px;
+  margin: 12px 0 0;
+}
+.figure dt { font-size: 0.8rem; color: var(--muted); }
+.figure dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 1rem;
+}
+.figure.is-main dd { font-size: 1.3rem; font-weight: 650; }
+.summary-note, .shared-note {
+  margin: 10px 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* 差し引きの正負。色だけに頼らず、符号（+ と −）でも示す */
+.is-plus { color: var(--ok-text); }
+.is-minus { color: var(--down); }
 
 /* ---------- 表 ---------- */
 
@@ -310,11 +365,58 @@ tr.row.is-down td:first-child { box-shadow: inset 3px 0 0 var(--down); }
 
 .col-id { width: 64px; }
 .col-up { width: 34px; }
-.col-stage { width: 90px; }
-.col-infra { width: 170px; }
-.col-tags { width: 170px; }
-.col-date { width: 110px; }
+.col-stage { width: 112px; }
+.col-infra { width: 150px; }
+.col-tags { width: 140px; }
+.col-money { width: 124px; }
+.col-net { width: 100px; }
+.col-keys { width: 116px; }
+.col-date { width: 100px; }
 .col-links { width: 84px; }
+
+/* 見出しの補足（「/ 区分」「/ 収益」）は並べ替えの対象ではないので、少し薄くする */
+.th-sub { font-weight: 500; }
+
+/* 同期ジョブの出力に費用や期限が含まれていないときは、その列ごと出さない */
+table.no-metrics .metric { display: none; }
+
+/* 区分。段階のバッジの下に小さく出す */
+.category {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* 金額とキー */
+td.money, td.net, td.keys {
+  font-size: 0.87rem;
+  font-variant-numeric: tabular-nums;
+}
+td.money .none, td.net .none, td.keys .none { color: var(--muted); }
+.amt { display: flex; justify-content: space-between; gap: 6px; white-space: nowrap; }
+.amt-label { font-size: 0.8rem; color: var(--muted); }
+.amt-value { font-family: var(--mono); }
+td.net .amt { justify-content: flex-end; font-weight: 600; }
+td.net, th.col-net { text-align: right; }
+/* 表では見出しが名前を示すので、セルの中の名前は出さない（費用と収益は 2 行になるので残す） */
+td.net .amt-label, td.keys > .amt-label, td.money > .amt-label { display: none; }
+.key-count { display: block; }
+.expiry { display: block; font-family: var(--mono); font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
+.expiry-flag {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.expiry-flag.is-soon { background: var(--badge-paused-bg); color: var(--badge-paused-fg); }
+.expiry-flag.is-expired { background: color-mix(in srgb, var(--down) 12%, transparent); color: var(--down); }
+tr.detail .expiry-flag { margin: 0 0 0 8px; }
+.legend .expiry-flag { margin: 0 6px 0 0; }
 
 td.id {
   font-family: var(--mono);
@@ -470,6 +572,29 @@ tr.detail .note { margin: 0 0 10px; white-space: pre-wrap; }
 
 .empty { color: var(--muted); text-align: center; padding: 32px 0; }
 
+/* ---------- 共通の費用 ---------- */
+
+.shared { margin: 24px 0 0; }
+.shared .shared-note { margin: 4px 0 10px; }
+.shared-wrap {
+  max-width: 640px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: clip;
+}
+.shared-table { width: 100%; border-collapse: collapse; font-size: 0.87rem; }
+.shared-table td, .shared-table tfoot th {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.shared-table tfoot th, .shared-table tfoot td { border-bottom: 0; font-weight: 650; background: var(--surface-2); }
+.shared-table .num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.shared-table .none { color: var(--muted); }
+
 /* ---------- 凡例 ---------- */
 
 .legend {
@@ -503,20 +628,28 @@ tr.detail .note { margin: 0 0 10px; white-space: pre-wrap; }
   .col-links { width: 108px; }
 }
 
-/* ---------- タブレット幅: 列を詰め、公開日と技術は展開したときだけ見せる ---------- */
+/* ---------- 幅が足りないとき: 表のまま列を減らす。隠した列は行を展開すると見られる ----------
+ * 1360px 未満で公開日と技術、1120px 未満でインフラ、960px 未満で最終更新を隠す。
+ * 費用、差し引き、キーは最後まで残す。
+ */
 
-@media (min-width: 720px) and (max-width: 959px) {
-  .col-id { width: 58px; }
-  .col-stage { width: 84px; }
-  .col-infra { width: 170px; }
-  .col-date { width: 100px; }
+@media (min-width: 860px) and (max-width: 1359px) {
   .col-released, td.released, .col-tags, td.tags-cell { display: none; }
+}
+
+@media (min-width: 860px) and (max-width: 1119px) {
+  .col-infra, td.infra-cell { display: none; }
   tr.detail td { padding-left: 16px; }
 }
 
-/* ---------- スマホ幅: 行をカードにする ---------- */
+@media (min-width: 860px) and (max-width: 959px) {
+  .col-id { width: 58px; }
+  .col-pushed, td.pushed { display: none; }
+}
 
-@media (max-width: 719px) {
+/* ---------- スマホ幅と縦置きのタブレット: 行をカードにする ---------- */
+
+@media (max-width: 859px) {
   #search, .unlock input[type="password"] { font-size: 16px; } /* 16px 未満だと iOS Safari がフォーカスで拡大する */
 
   .table-wrap { background: transparent; border: 0; box-shadow: none; overflow: visible; }
@@ -524,17 +657,20 @@ tr.detail .note { margin: 0 0 10px; white-space: pre-wrap; }
 
   /* 見出しは並べ替えのボタンだけを残す */
   table.services thead { display: block; margin-bottom: 8px; }
-  table.services thead tr { display: flex; gap: 14px; }
+  table.services thead tr { display: flex; flex-wrap: wrap; gap: 6px 14px; }
   table.services thead th { position: static; padding: 0; background: transparent; border: 0; box-shadow: none; width: auto; }
-  .col-up, .col-name, .col-stage, .col-infra, .col-tags, .col-links { display: none; }
+  .col-up, .col-name, .col-stage, .col-infra, .col-tags, .col-links, .th-sub { display: none; }
 
   tr.row {
     display: grid;
     grid-template-columns: 3.4em 12px minmax(0, 1fr) auto auto;
     grid-template-areas:
       "id up name name name"
-      "stage stage tags tags tags"
+      "stage stage stage stage stage"
+      "tags tags tags tags tags"
       "infra infra infra infra infra"
+      "money money money net net"
+      "keys keys keys keys keys"
       "released released released pushed links";
     gap: 6px 10px;
     align-items: center;
@@ -549,9 +685,30 @@ tr.detail .note { margin: 0 0 10px; white-space: pre-wrap; }
   tr.row td.id { grid-area: id; }
   tr.row td.up { grid-area: up; }
   tr.row td.name-cell { grid-area: name; min-width: 0; }
-  tr.row td.stage { grid-area: stage; }
+  tr.row td.stage { grid-area: stage; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+  tr.row td.stage .flag, tr.row td.stage .category { margin-top: 0; }
   tr.row td.tags-cell { grid-area: tags; min-width: 0; }
+  tr.row td.tags-cell:has(.tags:empty) { display: none; }
   tr.row td.infra-cell { grid-area: infra; min-width: 0; }
+  /* 金額とキー。見出しが無いので、セルの中の名前を出す */
+  tr.row td.money { grid-area: money; display: flex; flex-wrap: wrap; gap: 2px 14px; min-width: 0; }
+  tr.row td.net { grid-area: net; display: flex; justify-content: flex-end; gap: 6px; }
+  tr.row td.keys { grid-area: keys; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
+  tr.row td.net .amt-label, tr.row td.keys > .amt-label, tr.row td.money > .amt-label { display: inline; }
+  tr.row td.metric .amt-label { align-self: center; }
+  .amt { justify-content: flex-start; }
+  .key-count, .expiry { display: inline; }
+  .expiry-flag { margin-top: 0; }
+  /* 費用や期限が出力に無いときは、その 2 行を取らない */
+  table.no-metrics tr.row {
+    grid-template-areas:
+      "id up name name name"
+      "stage stage stage stage stage"
+      "tags tags tags tags tags"
+      "infra infra infra infra infra"
+      "released released released pushed links";
+  }
+  .shared-wrap { max-width: none; }
   tr.row td.released { grid-area: released; }
   tr.row td.pushed { grid-area: pushed; text-align: right; }
   tr.row td.links { grid-area: links; }

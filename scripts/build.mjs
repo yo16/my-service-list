@@ -23,6 +23,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pickLanguages, mergeTags } from './lib/tags.mjs';
 import { probeSite, readRepoSignals, detectInfra, applyManualInfra } from './lib/infra.mjs';
+import { monthOf, previousMonth } from './lib/metrics.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SITE_DIR = path.join(ROOT, 'site');
@@ -47,16 +48,59 @@ function env(name, { required = true } = {}) {
 
 // ---------- Supabase ----------
 
-async function fetchServices() {
+function supabaseGet(pathname) {
   const base = env('SUPABASE_URL').replace(/\/+$/, '');
   const key = env('SUPABASE_SERVICE_ROLE_KEY');
   // 新形式の secret key（sb_secret_...）は JWT ではないので apikey ヘッダーだけで送る。
   // 旧形式の service_role キー（JWT）は従来どおり Authorization にも付ける。
   const headers = { apikey: key, Accept: 'application/json' };
   if (!key.startsWith('sb_')) headers.Authorization = `Bearer ${key}`;
-  const res = await fetch(`${base}/rest/v1/services?select=*&order=id.asc`, { headers });
+  return fetch(`${base}/rest/v1${pathname}`, { headers });
+}
+
+async function fetchServices() {
+  const res = await supabaseGet('/services?select=*&order=id.asc');
   if (!res.ok) throw new Error(`Supabase の読み取りに失敗しました: ${res.status} ${await res.text()}`);
   return res.json();
+}
+
+// あとから足した表（区分、費用と収益、共通の費用、キー）を読む。
+// 表がまだ無いときや読めないときは null を返し、ジョブは止めない（その分を出力に含めないだけ）。
+// スキーマの適用とコードの反映の順番が前後しても、今までどおりの一覧を出し続けるため。
+async function fetchOptional(table, query) {
+  try {
+    const res = await supabaseGet(`/${table}?${query}`);
+    if (res.ok) return await res.json();
+    let code = '';
+    try {
+      code = String(JSON.parse(await res.text()).code || '');
+    } catch {
+      /* 本文はログに出さない */
+    }
+    // PGRST205 と 42P01 は表が無い、42703 は列が無い
+    if (res.status === 404 || ['PGRST205', '42P01', '42703'].includes(code)) {
+      log(`${table} はまだ無いので、その分を含めずに続けます（supabase/schema.sql を実行すると出ます）`);
+    } else {
+      warn(`${table} を読めないので、その分を含めずに続けます: 応答が ${res.status}${code ? `（${code}）` : ''}`);
+    }
+  } catch (e) {
+    warn(`${table} を読めないので、その分を含めずに続けます: ${e.message}`);
+  }
+  return null;
+}
+
+// 今月と先月（日本時間）の費用と収益、共通の費用、キー、区分をまとめて読む
+async function fetchMetrics(now = new Date()) {
+  const current = monthOf(now);
+  const previous = previousMonth(current);
+  const range = `month=in.(${previous}-01,${current}-01)`;
+  const [categories, monthly, shared, keys] = await Promise.all([
+    fetchOptional('service_categories', 'select=key,label,sort_order&order=sort_order.asc,key.asc'),
+    fetchOptional('service_monthly', `select=service_id,month,cost_jpy,revenue_jpy,breakdown&${range}`),
+    fetchOptional('shared_monthly_costs', `select=month,provider,account,category,cost_jpy&${range}&order=month.desc,provider.asc,account.asc`),
+    fetchOptional('service_keys', 'select=service_id,key_count,nearest_expiry,checked_at'),
+  ]);
+  return { months: { current, previous }, categories, monthly, shared, keys };
 }
 
 // ---------- GitHub ----------
@@ -225,9 +269,33 @@ async function resolveInfra(row, repo, url) {
   return applyManualInfra(detectInfra({ site, repo: signals, topics: repo ? repo.topics : [] }), row.infra);
 }
 
-function buildService(row, repo, monitor, ratio24h, infra) {
+// 1 か月分の費用と収益。行が無ければ null（0 円とは区別する）
+function monthMoney(rows, serviceId, month) {
+  const r = rows.find((x) => String(x.service_id) === String(serviceId) && String(x.month).slice(0, 7) === month);
+  if (!r) return null;
+  return { costJpy: r.cost_jpy, revenueJpy: r.revenue_jpy, breakdown: r.breakdown || null };
+}
+
+// 区分、費用と収益、キーをサービスに足す。読めなかった表の分は項目ごと足さない（今までどおりの形になる）
+function addMetrics(service, row, metrics) {
+  if (!metrics) return service;
+  if (metrics.categories && row.category !== undefined) service.category = row.category || null;
+  if (metrics.monthly) {
+    service.money = {
+      current: monthMoney(metrics.monthly, row.id, metrics.months.current),
+      previous: monthMoney(metrics.monthly, row.id, metrics.months.previous),
+    };
+  }
+  if (metrics.keys) {
+    const k = metrics.keys.find((x) => String(x.service_id) === String(row.id));
+    service.keys = k ? { count: k.key_count, nearestExpiry: k.nearest_expiry || null, checkedAt: k.checked_at || null } : null;
+  }
+  return service;
+}
+
+function buildService(row, repo, monitor, ratio24h, infra, metrics = null) {
   const url = row.url || (repo && repo.homepage) || null;
-  return {
+  return addMetrics({
     id: row.id,
     name: row.name,
     description: row.description || (repo && repo.description) || null,
@@ -256,7 +324,7 @@ function buildService(row, repo, monitor, ratio24h, infra) {
       }
       : null,
     note: row.note || null,
-  };
+  }, row, metrics);
 }
 
 async function buildData() {
@@ -269,6 +337,11 @@ async function buildData() {
   const rows = await fetchServices();
   log(`Supabase から ${rows.length} 件を読みました`);
   log(`持ち主ごとの GitHub トークン: ${OWNER_TOKENS.size} 本`);
+
+  // 金額はログに出さない。件数だけを出す
+  const metrics = await fetchMetrics();
+  const n = (rows_) => (rows_ ? `${rows_.length} 行` : 'なし');
+  log(`区分 ${n(metrics.categories)}、費用と収益 ${n(metrics.monthly)}、共通の費用 ${n(metrics.shared)}、キー ${n(metrics.keys)}`);
 
   let monitors = [];
   try {
@@ -300,10 +373,22 @@ async function buildData() {
       }
     }
     const infra = await resolveInfra(row, repo, url);
-    services.push(buildService(row, repo, monitor, ratio24h, infra));
+    services.push(buildService(row, repo, monitor, ratio24h, infra, metrics));
   }
 
-  return { generatedAt: new Date().toISOString(), services };
+  const data = { generatedAt: new Date().toISOString(), services };
+  if (metrics.categories) data.categories = metrics.categories.map((c) => ({ key: c.key, label: c.label }));
+  if (metrics.monthly || metrics.shared) data.months = metrics.months;
+  if (metrics.shared) {
+    data.sharedCosts = metrics.shared.map((c) => ({
+      month: String(c.month).slice(0, 7),
+      provider: c.provider,
+      account: c.account,
+      category: c.category || null,
+      costJpy: c.cost_jpy,
+    }));
+  }
+  return data;
 }
 
 // ---------- 暗号化 ----------
