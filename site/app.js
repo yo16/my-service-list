@@ -28,9 +28,16 @@
     stages: new Set(DEFAULT_STAGES),
     tags: new Set(),
     infra: new Set(),
+    categories: new Set(), // 空なら、すべての区分を出す
+    month: 'current',      // 費用と収益を出す月。current（今月）か previous（先月）
     sort: { key: 'id', dir: 'asc' },
     expanded: new Set(),
   };
+  const MONTHS = [
+    { key: 'current', label: '今月' },
+    { key: 'previous', label: '先月' },
+  ];
+  const EXPIRY_SOON_DAYS = 30;
 
   const $ = (sel) => document.querySelector(sel);
 
@@ -108,6 +115,53 @@
     const months = Math.floor(days / 30);
     if (months < 12) return `${months} か月前`;
     return `${Math.max(1, Math.floor(days / 365))} 年前`;
+  }
+
+  // 今日から日付（YYYY-MM-DD）までの日数。過ぎていれば負。日付は端末の時刻で数える
+  function daysUntil(ymd) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd || '');
+    if (!m) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Math.round((new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) - today) / 86400000);
+  }
+
+  // ---------- 区分、費用と収益、キー ----------
+
+  const yen = (n) => `¥${Number(n).toLocaleString('ja-JP')}`;
+  // 差し引きは色だけに頼らず、符号でも正負を示す
+  const signedYen = (n) => (n > 0 ? `+${yen(n)}` : n < 0 ? `−${yen(-n)}` : yen(0));
+  const netClass = (n) => (n > 0 ? 'is-plus' : n < 0 ? 'is-minus' : '');
+
+  // 同期ジョブが費用や期限を出力に含めているか。含めていなければ、その列ごと出さない
+  const hasMetrics = () => Boolean(state.data.months) || state.data.services.some((s) => 'money' in s || 'keys' in s);
+  const hasCategories = () => Array.isArray(state.data.categories) && state.data.categories.length > 0;
+
+  function categoryLabel(key) {
+    if (!key) return null;
+    const c = (state.data.categories || []).find((x) => x.key === key);
+    return c ? c.label : key;
+  }
+
+  const monthName = (key) => (state.data.months && state.data.months[key]) || null;
+  const moneyOf = (s, month = state.month) => (s.money && s.money[month]) || null;
+  const netOf = (s, month = state.month) => {
+    const m = moneyOf(s, month);
+    return m ? m.revenueJpy - m.costJpy : null;
+  };
+  const sharedOf = (month = state.month) => (state.data.sharedCosts || []).filter((c) => c.month === monthName(month));
+
+  // キーのいちばん近い期限の状態: expired（過ぎた）、soon（30 日以内）、ok、null（期限なし）
+  function expiryOf(s) {
+    const days = s.keys ? daysUntil(s.keys.nearestExpiry) : null;
+    if (days == null) return null;
+    return { days, state: days < 0 ? 'expired' : days <= EXPIRY_SOON_DAYS ? 'soon' : 'ok' };
+  }
+
+  function expiryFlag(exp) {
+    if (!exp || exp.state === 'ok') return null;
+    const text = exp.state === 'expired' ? '期限切れ' : exp.days === 0 ? '今日まで' : `あと ${exp.days} 日`;
+    return el('span', { class: `expiry-flag is-${exp.state}`, text });
   }
 
   // ---------- 復号 ----------
@@ -245,19 +299,106 @@
   function show(data) {
     state.data = data;
     $('#app').hidden = false;
+    // 費用は月が締まってから入ることが多い。今月の分がまだ無ければ、先月を先に見せる
+    const filled = (month) => data.services.some((s) => moneyOf(s, month)) || sharedOf(month).length > 0;
+    state.month = !filled('current') && filled('previous') ? 'previous' : 'current';
+    $('#services-table').classList.toggle('no-metrics', !hasMetrics());
     renderMeta();
     renderStageFilter();
+    renderCategoryFilter();
     renderInfraFilter();
     renderTagFilter();
     renderLegend();
     bindControls();
+    renderSummary();
+    renderShared();
     renderRows();
   }
 
   function renderLegend() {
     $('#legend-site').replaceChildren(svgIcon('site'), 'サイト');
     $('#legend-repo').replaceChildren(svgIcon('repo'), 'リポジトリ');
+    $('#legend-expiry').hidden = !hasMetrics();
     $('#lock').hidden = !storage('get');
+  }
+
+  // 月を切り替えたときに、合計、共通の費用、表をそろえて描き直す
+  function setMonth(key) {
+    state.month = key;
+    renderSummary();
+    renderShared();
+    renderRows();
+  }
+
+  // 合計は絞り込みに連動させない（隠している「終了」のサービスの費用も含めるため）
+  function renderSummary() {
+    const section = $('#summary');
+    section.hidden = !state.data.months;
+    if (section.hidden) return;
+
+    const sw = $('#month-switch');
+    sw.replaceChildren();
+    for (const m of MONTHS) {
+      sw.append(el('button', {
+        type: 'button',
+        class: 'toggle',
+        'aria-pressed': String(state.month === m.key),
+        onclick: () => setMonth(m.key),
+      }, [m.label, el('span', { class: 'month-name', text: monthName(m.key) })]));
+    }
+
+    const services = state.data.services;
+    const entered = services.filter((s) => moneyOf(s));
+    const serviceCost = entered.reduce((sum, s) => sum + moneyOf(s).costJpy, 0);
+    const revenue = entered.reduce((sum, s) => sum + moneyOf(s).revenueJpy, 0);
+    const sharedCost = sharedOf().reduce((sum, c) => sum + c.costJpy, 0);
+    const net = revenue - serviceCost - sharedCost;
+
+    const figures = $('#summary-figures');
+    figures.replaceChildren();
+    const figure = (label, value, cls) => figures.append(el('div', { class: `figure ${cls || ''}` }, [
+      el('dt', { text: label }),
+      el('dd', { text: value }),
+    ]));
+    figure('費用の合計', yen(serviceCost + sharedCost), 'is-main');
+    figure('うちサービスごと', yen(serviceCost));
+    figure('うち共通', yen(sharedCost));
+    figure('収益の合計', yen(revenue), 'is-main');
+    figure('差し引き', signedYen(net), `is-main ${netClass(net)}`);
+
+    $('#summary-note').textContent = entered.length || sharedOf().length
+      ? `${monthName(state.month)} の分。サービス ${services.length} 件のうち ${entered.length} 件に金額が入っています。絞り込みには連動しません。`
+      : `${monthName(state.month)} の金額は、まだ入っていません。`;
+  }
+
+  function renderShared() {
+    const section = $('#shared');
+    section.hidden = !Array.isArray(state.data.sharedCosts);
+    if (section.hidden) return;
+    const rows = sharedOf();
+    const body = $('#shared-rows');
+    const foot = $('#shared-foot');
+    body.replaceChildren();
+    foot.replaceChildren();
+    $('#shared-title').textContent = `共通の費用（${monthName(state.month)}）`;
+    $('.shared-wrap').hidden = rows.length === 0;
+    const empty = $('#shared-empty');
+    empty.hidden = rows.length > 0;
+    empty.textContent = `${monthName(state.month)} の共通の費用は、まだ入っていません。`;
+    for (const c of rows) {
+      body.append(el('tr', {}, [
+        el('td', { text: c.provider }),
+        el('td', { text: c.account }),
+        el('td', {}, c.category ? categoryLabel(c.category) : el('span', { class: 'none', text: '—' })),
+        el('td', { class: 'num', text: yen(c.costJpy) }),
+      ]));
+    }
+    if (rows.length) {
+      foot.append(el('tr', {}, [
+        el('th', { colspan: '3', scope: 'row', text: '合計' }),
+        el('td', { class: 'num', text: yen(rows.reduce((sum, c) => sum + c.costJpy, 0)) }),
+      ]));
+    }
   }
 
   const isDown = (s) => Boolean(s.uptime) && (s.uptime.status === 'DOWN' || s.uptime.status === 'LOOKS_DOWN');
@@ -274,6 +415,11 @@
     }
     const parts = [];
     if (down) parts.push(el('span', { class: 'down-count', text: `停止中 ${down}` }));
+    const expiring = services.filter((s) => {
+      const exp = expiryOf(s);
+      return exp && exp.state !== 'ok';
+    }).length;
+    if (expiring) parts.push(el('span', { class: 'expiry-count', text: `キーの期限が近い ${expiring}` }));
     const when = fmtDateTime(state.data.generatedAt);
     if (when) parts.push(el('span', { text: `更新 ${when}` }));
     for (const s of STAGES) {
@@ -300,6 +446,28 @@
           renderRows();
         },
       });
+      group.append(btn);
+    }
+  }
+
+  // 区分の絞り込み。何も選んでいなければ、すべての区分を出す
+  function renderCategoryFilter() {
+    const group = $('#category-filter');
+    group.hidden = !hasCategories();
+    if (group.hidden) return;
+    group.replaceChildren(el('span', { class: 'group-label', text: '区分' }));
+    for (const c of state.data.categories) {
+      const n = state.data.services.filter((s) => s.category === c.key).length;
+      const btn = el('button', {
+        type: 'button',
+        class: 'toggle',
+        'aria-pressed': String(state.categories.has(c.key)),
+        onclick: () => {
+          if (state.categories.has(c.key)) state.categories.delete(c.key); else state.categories.add(c.key);
+          btn.setAttribute('aria-pressed', String(state.categories.has(c.key)));
+          renderRows();
+        },
+      }, [c.label, el('span', { class: 'count', text: String(n) })]);
       group.append(btn);
     }
   }
@@ -341,6 +509,7 @@
   const isFiltered = () => state.query !== ''
     || state.tags.size > 0
     || state.infra.size > 0
+    || state.categories.size > 0
     || state.stages.size !== DEFAULT_STAGES.length
     || DEFAULT_STAGES.some((k) => !state.stages.has(k));
 
@@ -349,8 +518,10 @@
     state.stages = new Set(DEFAULT_STAGES);
     state.tags = new Set();
     state.infra = new Set();
+    state.categories = new Set();
     $('#search').value = '';
     renderStageFilter();
+    renderCategoryFilter();
     renderInfraFilter();
     renderTagFilter();
     renderRows();
@@ -374,7 +545,8 @@
       btn.addEventListener('click', () => {
         const key = btn.dataset.sort;
         if (state.sort.key === key) state.sort.dir = state.sort.dir === 'asc' ? 'desc' : 'asc';
-        else state.sort = { key, dir: key === 'id' ? 'asc' : 'desc' };
+        // 番号は小さい順、キーの期限は近い順から。ほかは大きい（新しい）順から
+        else state.sort = { key, dir: key === 'id' || key === 'keyExpiry' ? 'asc' : 'desc' };
         renderRows();
       });
     }
@@ -386,10 +558,11 @@
 
   function matches(s) {
     if (!state.stages.has(s.stage)) return false;
+    if (state.categories.size && !state.categories.has(s.category)) return false;
     for (const t of state.tags) if (!(s.tags || []).includes(t)) return false;
     for (const t of state.infra) if (!infraValues(s).includes(t)) return false;
     if (state.query) {
-      const hay = [s.name, s.description, s.note, ...(s.tags || []), ...infraValues(s), s.repo && s.repo.fullName]
+      const hay = [s.name, s.description, s.note, ...(s.tags || []), ...infraValues(s), s.repo && s.repo.fullName, categoryLabel(s.category)]
         .filter(Boolean).join(' ').toLowerCase();
       if (!hay.includes(state.query)) return false;
     }
@@ -400,6 +573,9 @@
     switch (state.sort.key) {
       case 'releasedOn': return s.releasedOn || null;
       case 'pushedAt': return (s.repo && s.repo.pushedAt) || null;
+      case 'cost': return moneyOf(s) ? moneyOf(s).costJpy : null;
+      case 'net': return netOf(s);
+      case 'keyExpiry': return (s.keys && s.keys.nearestExpiry) || null;
       default: return s.id;
     }
   }
@@ -515,10 +691,39 @@
 
     const stageCell = el('td', { class: 'stage' }, stageBadge(s));
     if (s.repo && s.repo.archived) stageCell.append(el('span', { class: 'flag', text: 'archived' }));
+    if (s.category) stageCell.append(el('span', { class: 'category', text: categoryLabel(s.category) }));
     tr.append(stageCell);
 
     tr.append(el('td', { class: 'infra-cell' }, infraList(s)));
     tr.append(el('td', { class: 'tags-cell' }, tagList(s.tags || [], 3)));
+
+    // 見出しのない狭い画面でも読めるように、金額とキーにはセルの中にも名前を付ける
+    const amount = (label, value, cls) => el('span', { class: `amt ${cls || ''}` }, [
+      el('span', { class: 'amt-label', text: label }),
+      el('span', { class: 'amt-value', text: value }),
+    ]);
+    const none = () => el('span', { class: 'none', text: '—' });
+    const money = moneyOf(s);
+    const net = netOf(s);
+    tr.append(el('td', { class: 'money metric' }, money
+      ? [amount('費用', yen(money.costJpy)), amount('収益', yen(money.revenueJpy))]
+      : [el('span', { class: 'amt-label', text: '費用' }), none()]));
+    tr.append(el('td', { class: 'net metric' }, net != null
+      ? amount('差し引き', signedYen(net), netClass(net))
+      : [el('span', { class: 'amt-label', text: '差し引き' }), none()]));
+
+    const keysCell = el('td', { class: 'keys metric' }, el('span', { class: 'amt-label', text: 'キー' }));
+    if (s.keys) {
+      const exp = expiryOf(s);
+      keysCell.append(el('span', { class: 'key-count', text: `${s.keys.count} 本` }));
+      if (s.keys.nearestExpiry) keysCell.append(el('span', { class: 'expiry', text: `${s.keys.nearestExpiry} まで` }));
+      else if (s.keys.count > 0) keysCell.append(el('span', { class: 'expiry', text: '期限なし' }));
+      const flag = expiryFlag(exp);
+      if (flag) keysCell.append(flag);
+    } else {
+      keysCell.append(none());
+    }
+    tr.append(keysCell);
 
     const released = fmtDate(s.releasedOn);
     tr.append(el('td', { class: 'date released', 'data-label': '公開' },
@@ -536,7 +741,7 @@
   }
 
   function renderDetail(s) {
-    const td = el('td', { colspan: '9' });
+    const td = el('td', { colspan: '12' });
     if (s.description) td.append(el('p', { class: 'full-desc', text: s.description }));
     if (s.note) td.append(el('p', { class: 'note', text: s.note }));
 
@@ -579,7 +784,30 @@
       grid.append(dl([['死活', '未監視']]));
     }
 
+    if (hasMetrics()) {
+      const monthLine = (key) => {
+        const m = moneyOf(s, key);
+        if (!monthName(key)) return null;
+        return m ? `費用 ${yen(m.costJpy)} ・ 収益 ${yen(m.revenueJpy)} ・ 差し引き ${signedYen(netOf(s, key))}` : '未入力';
+      };
+      const shown = moneyOf(s);
+      const breakdown = shown && shown.breakdown
+        ? Object.entries(shown.breakdown).map(([name, v]) => `${name} ${yen(v)}`).join('、')
+        : null;
+      const exp = expiryOf(s);
+      const k = s.keys;
+      grid.append(dl([
+        [`今月（${monthName('current') || '—'}）`, monthLine('current')],
+        [`先月（${monthName('previous') || '—'}）`, monthLine('previous')],
+        [`費用の内訳（${monthName(state.month) || '—'}）`, breakdown],
+        ['キー', k ? `${k.count} 本` : '未入力'],
+        ['いちばん近い期限', k ? el('span', {}, [k.nearestExpiry || 'なし', expiryFlag(exp)]) : null],
+        ['キーを確かめた日', k ? fmtDate(k.checkedAt) : null],
+      ]));
+    }
+
     grid.append(dl([
+      ['区分', categoryLabel(s.category)],
       ['URL', safeUrl(s.url) ? el('a', { href: s.url, target: '_blank', rel: 'noopener', text: s.url }) : (s.url || '未設定')],
       ['公開日', fmtDate(s.releasedOn)],
       ['インフラ', infraValues(s).join(', ') || '不明'],
