@@ -42,6 +42,7 @@ const TOKEN = randomBytes(16).toString('hex'); // 起動のたびに変わる。
 
 const STAGES = ['planning', 'developing', 'released', 'paused', 'retired'];
 const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+const CATEGORY_RE = /^[a-z0-9][a-z0-9-]*$/;
 
 const log = (...a) => console.log('[admin]', ...a);
 const warn = (...a) => console.warn('[admin] 警告:', ...a);
@@ -106,6 +107,17 @@ async function supabase(method, pathname, body) {
   return text ? JSON.parse(text) : null;
 }
 
+// 区分の一覧。区分の表と services.category がまだ無い（スキーマを実行する前の）ときは null を返し、
+// 画面は区分の欄を出さない。どちらかだけある状態で値を送ると保存に失敗するので、両方を確かめる
+async function listCategories() {
+  try {
+    await supabase('GET', '/services?select=category&limit=1');
+    return await supabase('GET', '/service_categories?select=key,label&order=sort_order.asc,key.asc');
+  } catch {
+    return null;
+  }
+}
+
 // ---------- 入力の検証 ----------
 
 function normalizeRepo(v) {
@@ -148,6 +160,12 @@ function validateService(input, { partial = false } = {}) {
   if (!partial || has('stage')) {
     out.stage = str('stage') || 'planning';
     if (!STAGES.includes(out.stage)) throw new HttpError(400, `段階の値が不正です: ${out.stage}`);
+  }
+  // 区分。登録済みかどうかは Supabase の外部キーが確かめる
+  if (has('category')) {
+    const v = str('category');
+    if (!CATEGORY_RE.test(v)) throw new HttpError(400, '区分の値が不正です');
+    out.category = v;
   }
   if (has('github_repo')) {
     const v = normalizeRepo(str('github_repo'));
@@ -364,7 +382,7 @@ async function route(req, res) {
   checkToken(req);
 
   if (req.method === 'GET' && p === '/api/config') {
-    return send(res, 200, { supabaseHost: new URL(env('SUPABASE_URL')).host, githubAuth: ghAuth.source, stages: STAGES });
+    return send(res, 200, { supabaseHost: new URL(env('SUPABASE_URL')).host, githubAuth: ghAuth.source, stages: STAGES, categories: await listCategories() });
   }
   if (req.method === 'GET' && p === '/api/services') {
     return send(res, 200, await supabase('GET', '/services?select=*&order=id.asc'));
