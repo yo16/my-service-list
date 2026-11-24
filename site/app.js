@@ -360,13 +360,16 @@
       el('dt', { text: label }),
       el('dd', { text: value }),
     ]));
-    figure('費用の合計', yen(serviceCost + sharedCost), 'is-main');
-    figure('うちサービスごと', yen(serviceCost));
-    figure('うち共通', yen(sharedCost));
-    figure('収益の合計', yen(revenue), 'is-main');
-    figure('差し引き', signedYen(net), `is-main ${netClass(net)}`);
+    // 何も入っていない月は、0 円と区別するために — を出す（表の未入力と同じ扱い）
+    const hasAny = entered.length > 0 || sharedOf().length > 0;
+    const shown = (text) => (hasAny ? text : '—');
+    figure('費用の合計', shown(yen(serviceCost + sharedCost)), 'is-main');
+    figure('うちサービスごと', shown(yen(serviceCost)));
+    figure('うち共通', shown(yen(sharedCost)));
+    figure('収益の合計', shown(yen(revenue)), 'is-main');
+    figure('差し引き', shown(signedYen(net)), `is-main ${hasAny ? netClass(net) : ''}`);
 
-    $('#summary-note').textContent = entered.length || sharedOf().length
+    $('#summary-note').textContent = hasAny
       ? `${monthName(state.month)} の分。サービス ${services.length} 件のうち ${entered.length} 件に金額が入っています。絞り込みには連動しません。`
       : `${monthName(state.month)} の金額は、まだ入っていません。`;
   }
