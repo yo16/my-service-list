@@ -13,12 +13,14 @@
 | パス | 内容 |
 |---|---|
 | `docs/design.md` | 設計書 |
-| `supabase/schema.sql` | `services` テーブルの定義。Supabase の SQL Editor で実行する |
+| `supabase/schema.sql` | `services` テーブルと、区分、費用と収益、キーの表の定義。Supabase の SQL Editor で実行する。何度実行しても同じ結果になる |
 | `scripts/build.mjs` | 同期スクリプト。Node 22 以上、依存ライブラリなし |
 | `scripts/lib/tags.mjs` | 技術タグの決め方（GitHub の Topics と使用言語の結合） |
 | `scripts/lib/infra.mjs` | インフラの判定（サイトの応答ヘッダーとリポジトリのファイルからインフラを推定） |
 | `scripts/admin.mjs` | ローカルの登録画面のサーバー。Node 22 以上、依存ライブラリなし |
 | `admin/index.html` | 登録画面の HTML。`scripts/admin.mjs` が配信する。Pages には配置されない |
+| `scripts/import-metrics.mjs` | 費用、収益、キーの本数と期限の取り込み。JSON を検証して Supabase に入れる。Node 22 以上、依存ライブラリなし |
+| `scripts/lib/metrics.mjs` | 取り込む JSON の検証。テストは `scripts/lib/metrics.test.mjs`（`npm test`） |
 | `scripts/check-variants.mjs` | 表記ゆれの点検。`npm run check:variants` で動かす。Node 22 以上、依存ライブラリなし |
 | `package.json` | npm から動かすスクリプトの定義だけを持つ。依存ライブラリはない |
 | `.env.example` | 登録画面が読む `.env` の見本 |
@@ -114,6 +116,27 @@ Secrets を登録するまで、同期ジョブは失敗にならず何もせず
 2. 「Edit」を押す。
 3. Repository access で、足すリポジトリを選ぶ。
 4. 「Update」を押す。
+
+## 費用、収益、キーの本数と期限を取り込む
+
+サービスごとの月の費用と収益、サービスに分けられない共通の費用、API キーの本数といちばん近い期限を、1 か月分の JSON ファイルから Supabase に入れる。`.env` は登録画面と同じものを使う。JSON の形は [docs/design.md](docs/design.md) の 3.6 にある。このリポジトリは公開なので、本物の金額を書いた JSON ファイルはリポジトリの外に置く。
+
+誤りがあれば、何も書き込まずにエラーで止まる。同じ月を何度取り込んでも、同じ行を上書きするだけになる。
+
+1. その月の JSON ファイルを、リポジトリの外に作る。
+2. リポジトリのフォルダで次を実行し、検証だけを行う（書き込まない）。`<ファイル>` は 1 で作ったファイルの場所に置き換える。
+
+   ```
+   node scripts/import-metrics.mjs <ファイル> --dry-run
+   ```
+
+3. 「検証を通りました」と出たら、`--dry-run` を外して実行する。
+
+   ```
+   node scripts/import-metrics.mjs <ファイル>
+   ```
+
+4. 登録画面の「一覧ページに反映する」を押す。
 
 ## 表記ゆれを点検する
 
