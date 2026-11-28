@@ -46,9 +46,11 @@ function issueType(labels) {
 }
 
 function main() {
-  const ghIssues = JSON.parse(
+  let ghIssues = JSON.parse(
     run('gh', ['issue', 'list', '--state', 'open', '--limit', '200', '--json', 'number,title,body,url,labels']),
   );
+  // キーの期限の通知（scripts/notify-key-expiry.mjs が作る Issue）は、利用者への知らせであって作業ではないので登録しない
+  ghIssues = ghIssues.filter((i) => !i.labels.some((l) => l.name === 'key-expiry'));
   if (ghIssues.length === 0) return;
 
   const beads = JSON.parse(run('bd', ['list', '--all', '--limit', '0', '--brief', '--json']));

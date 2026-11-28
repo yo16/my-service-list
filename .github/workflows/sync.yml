@@ -76,6 +76,27 @@ jobs:
         with:
           path: dist
 
+  # 期限が近い API キーを、このリポジトリの Issue で知らせる（docs/design.md の 4.1）。
+  # Issue を書く権限は、このジョブにだけ付ける。失敗しても、一覧ページの配置は止めない
+  notify:
+    needs: build
+    if: needs.build.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: キーの期限を調べて知らせる
+        run: node scripts/notify-key-expiry.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+
   deploy:
     needs: build
     if: needs.build.outputs.configured == 'true'

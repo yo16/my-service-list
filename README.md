@@ -26,6 +26,8 @@
 | `scripts/check-variants.mjs` | 表記ゆれの点検。`npm run check:variants` で動かす。Node 22 以上、依存ライブラリなし |
 | `scripts/maintain-from-readme.mjs` | README からの登録情報のメンテナンス。`npm run maintain:readme` で動かす。Node 22 以上、依存ライブラリなし |
 | `scripts/lib/readme.mjs` | README から説明、技術タグ、インフラ、URL の候補を読む規則。テストは `scripts/lib/readme.test.mjs`（`npm test`） |
+| `scripts/notify-key-expiry.mjs` | 期限が近い API キーを、このリポジトリの Issue で知らせる。同期ジョブから動く |
+| `scripts/lib/key-expiry.mjs` | キーの期限の通知で、何を知らせ、何を閉じるかを決める規則。テストは `scripts/lib/key-expiry.test.mjs`（`npm test`） |
 | `scripts/sync-github-issues.mjs` | Claude Code のセッション開始時に、GitHub の open な Issue を beads に登録する |
 | `package.json` | npm から動かすスクリプトの定義だけを持つ。依存ライブラリはない |
 | `.env.example` | 登録画面が読む `.env` の見本 |
@@ -162,6 +164,16 @@ Secrets を登録するまで、同期ジョブは失敗にならず何もせず
    ```
 
 4. 登録画面の「一覧ページに反映する」を押す。
+
+## キーの期限の通知
+
+API キーのいちばん近い期限が、30 日以内、7 日以内、期限切れになると、同期ジョブがこのリポジトリに Issue を 1 つ作る（ラベルは `key-expiry`）。GitHub からの通知で気づける。Issue に書かれるのは通し番号と日数だけなので、どのサービスかは一覧ページで確かめる。
+
+1. 通知の Issue に書かれた通し番号のサービスを、一覧ページで確かめる。
+2. そのサービスのキーを更新する。
+3. キーの本数と新しい期限を、JSON の `keys` に書いて取り込む（上の「費用、収益、キーの本数と期限を取り込む」）。
+
+取り込んだあとの同期で、通知の Issue は自動で閉じる。同じ期限の同じ段階については、Issue を自分で閉じても、もう一度は作られない。
 
 ## 表記ゆれを点検する
 
