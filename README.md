@@ -22,6 +22,9 @@
 | `scripts/import-metrics.mjs` | 費用、収益、キーの本数と期限の取り込み。JSON を検証して Supabase に入れる。Node 22 以上、依存ライブラリなし |
 | `scripts/lib/metrics.mjs` | 取り込む JSON の検証。テストは `scripts/lib/metrics.test.mjs`（`npm test`） |
 | `scripts/check-variants.mjs` | 表記ゆれの点検。`npm run check:variants` で動かす。Node 22 以上、依存ライブラリなし |
+| `scripts/maintain-from-readme.mjs` | README からの登録情報のメンテナンス。`npm run maintain:readme` で動かす。Node 22 以上、依存ライブラリなし |
+| `scripts/lib/readme.mjs` | README から説明、技術タグ、インフラ、URL の候補を読む規則。テストは `scripts/lib/readme.test.mjs`（`npm test`） |
+| `scripts/sync-github-issues.mjs` | Claude Code のセッション開始時に、GitHub の open な Issue を beads に登録する |
 | `package.json` | npm から動かすスクリプトの定義だけを持つ。依存ライブラリはない |
 | `.env.example` | 登録画面が読む `.env` の見本 |
 | `.github/workflows/sync.yml` | 同期ジョブ（毎時、手動、push 時）と GitHub Pages への配置 |
@@ -151,6 +154,29 @@ Secrets を登録するまで、同期ジョブは失敗にならず何もせず
 2. 出てきた組ごとに、別のものか、同じものの書き分けかを確かめる。「← そろえる表記」と出ている表記は、同期のときの自動判定が使う書き方か、そろえる先として決めた書き方である。
 3. 同じものなら、登録画面の「編集」で「← そろえる表記」の書き方にそろえる。
 4. そろえる先を新しく決めたら、自動判定の表記は `scripts/lib/infra.mjs` で、それ以外は `scripts/check-variants.mjs` の `PREFERRED_TERMS` に足す。
+
+## README から登録情報を足す
+
+登録済みのサービスの GitHub リポジトリの README を読み、登録に無い技術タグ、インフラ、説明、URL を足す。足すだけで、すでにある値は消さない。`.env` は登録画面と同じものを使う。
+
+読むのは、README の冒頭と、見出しに「技術」「構成」「スタック」「インフラ」などを含む節だけである。名前が出てくることしか分からないので、使っていないものが候補に混ざることがある。そのため、最初は書き込まずに候補だけを出す。
+
+1. リポジトリのフォルダで次を実行する。サービスごとに、足す候補が出る。
+
+   ```
+   npm run maintain:readme
+   ```
+
+2. 候補を確かめ、書き込んでよいサービスの通し番号を控える。
+3. 控えた通し番号をカンマ区切りで `--id` に渡し、`--apply` を付けて実行する。次の例は 3 番と 5 番だけを書き込む。
+
+   ```
+   npm run maintain:readme -- --id 3,5 --apply
+   ```
+
+4. 登録画面の「一覧ページに反映する」を押す。
+
+候補のうち一部だけが誤りのサービスは、書き込んだあとに登録画面の「編集」で直す。すでにある説明を README の冒頭の文に置き換えたいときは、`--rewrite-description` を足す。
 
 ## ローカルで確かめる
 
