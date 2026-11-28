@@ -1078,12 +1078,14 @@
       // 棒に重ねないよう、その月の右隣に出す。右に入らなければ左隣に出す
       const w = tip.offsetWidth;
       const right = centerX + band / 2 + 6;
-      const left = right + w <= width ? right : centerX - band / 2 - 6 - w;
-      // 狭い画面で左右どちらにも入らないときは、グラフの下に出す
-      tip.style.top = left < 0 ? '100%' : '0';
-      tip.style.left = `${Math.max(0, Math.min(width - w, left))}px`;
+      const side = right + w <= width ? right : centerX - band / 2 - 6 - w;
+      // スマホ幅では、横に出すとほかの月の棒を隠すので、グラフの下に、その月に寄せて出す
+      const below = width < 480 || side < 0;
+      tip.style.top = below ? '100%' : '0';
+      tip.style.left = `${Math.max(0, Math.min(width - w, below ? centerX - w / 2 : side))}px`;
     };
     const hideTip = () => { tip.hidden = true; };
+    let restoringFocus = false;
 
     rows.forEach((row, i) => {
       const x0 = m.left + i * band;
@@ -1117,13 +1119,16 @@
       });
       const [year, mon] = row.month.split('-');
       g.append(svgEl('text', { class: 'viz-tick', x: center, y: m.top + plotH + 16, 'text-anchor': 'middle', text: String(Number(mon)) }));
-      // 年は、左端の月と 1 月にだけ出す
-      if (i === 0 || mon === '01') {
+      // 年は、左端の月と 1 月にだけ出す。左端のすぐあとに 1 月が来て文字が重なるときは、左端の分を出さない
+      const nextJan = rows.findIndex((r, k) => k > 0 && r.month.endsWith('-01'));
+      const crowded = i === 0 && mon !== '01' && nextJan > 0 && nextJan * band < 64;
+      if ((i === 0 || mon === '01') && !crowded) {
         g.append(svgEl('text', { class: 'viz-tick viz-year', x: center, y: m.top + plotH + 31, 'text-anchor': i === 0 ? 'start' : 'middle', dx: i === 0 ? -band / 2 + 2 : 0, text: `${year}年` }));
       }
       g.addEventListener('pointerenter', () => showTip(row, center));
       g.addEventListener('pointerleave', hideTip);
-      g.addEventListener('focus', () => showTip(row, center));
+      // スマホ幅で月を押して選んだあとは、吹き出しを出し直さない（下に出すので、選んだ月の集計の見出しを隠してしまう）
+      g.addEventListener('focus', () => { if (!(restoringFocus && width < 480)) showTip(row, center); });
       g.addEventListener('blur', hideTip);
       if (onSelect) {
         g.addEventListener('click', () => onSelect(row.month));
@@ -1139,7 +1144,9 @@
     host.replaceChildren(svg, tip);
     if (hadFocus) {
       const again = host.querySelector(`[data-month="${hadFocus}"]`);
+      restoringFocus = true;
       if (again) again.focus();
+      restoringFocus = false;
     }
   }
 

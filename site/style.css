@@ -696,6 +696,7 @@ tr.detail .note { margin: 0 0 10px; white-space: pre-wrap; }
   border-radius: 8px;
   box-shadow: var(--shadow);
   font-size: 0.8rem;
+  white-space: nowrap;
   pointer-events: none;
 }
 .viz-tip-title { font-weight: 650; margin-bottom: 4px; }
@@ -763,6 +764,11 @@ tr.detail .note { margin: 0 0 10px; white-space: pre-wrap; }
 
 @media (pointer: coarse) {
   .toggle, .chip { min-height: 36px; }
+  /* 文字だけの小さなボタンも、指で押せる高さにする */
+  button.sort, .link-button, .tag-details summary, .viz-table-details summary { min-height: 36px; padding-block: 8px; }
+  button.sort { padding-inline: 2px; }
+  button.name { padding-block: 6px; }
+  .month-select select { min-height: 36px; }
   .icon-link { width: 40px; height: 40px; }
   .col-links { width: 108px; }
 }
@@ -866,6 +872,19 @@ tr.detail .note { margin: 0 0 10px; white-space: pre-wrap; }
   }
   tr.detail dl { display: grid; grid-template-columns: 7em minmax(0, 1fr); gap: 2px 8px; }
   tr.detail dd { margin: 0; }
+
+  /* 推移と区分の表は 6 列ある。余白と文字を詰め、見出しを折り返して、横にずらさずに読めるようにする */
+  .summary { padding: 14px 12px; }
+  .trend-table-wrap .shared-table, .category-wrap .shared-table { font-size: 0.8rem; }
+  .trend-table-wrap .shared-table th, .trend-table-wrap .shared-table td,
+  .category-wrap .shared-table th, .category-wrap .shared-table td { padding: 7px 3px; }
+  .trend-table-wrap .shared-table th:first-child, .category-wrap .shared-table th:first-child { padding-left: 8px; }
+  .trend-table-wrap .shared-table :is(th, td):last-child, .category-wrap .shared-table :is(th, td):last-child { padding-right: 8px; }
+  .trend-table-wrap .shared-table thead th, .category-wrap .shared-table thead th { white-space: normal; vertical-align: bottom; }
+  .trend-table-wrap .shared-table th[scope="row"], .category-wrap .shared-table th[scope="row"] { white-space: normal; padding: 7px 3px 7px 8px; }
+  /* 月（2026-05）は途中で折り返さない。区分の名前は折り返してよい */
+  .trend-table-wrap .shared-table th[scope="row"] { white-space: nowrap; padding-left: 2px; }
+  .trend-table-wrap .shared-table :is(th, td):last-child { padding-right: 2px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
