@@ -5,6 +5,7 @@
 - マスタは Supabase の `services` テーブルに置く。追加と編集は、自分の PC で動かす登録画面（`node scripts/admin.mjs`）で行う。
 - GitHub Actions の同期ジョブが毎時、GitHub API（リポジトリの URL、Topics、使用言語、Release、最終 push）と UptimeRobot API v3（死活、24 時間の稼働率）を取り、結合した JSON をパスフレーズで暗号化して GitHub Pages に配置する。
 - 一覧ページ（https://yo16.github.io/my-service-list/）はパスフレーズを入力すると復号して表を出す。ログインの仕組みは持たない。
+- 一覧ページの「推移と集計」で、直近 12 か月の費用と収益のグラフと、区分ごとの集計を見られる。
 
 設計の詳細は [docs/design.md](docs/design.md) にある。
 

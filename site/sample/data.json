@@ -2,7 +2,21 @@
   "generatedAt": "2026-11-03T06:00:00Z",
   "months": {
     "current": "2026-11",
-    "previous": "2026-10"
+    "previous": "2026-10",
+    "list": [
+      "2025-12",
+      "2026-01",
+      "2026-02",
+      "2026-03",
+      "2026-04",
+      "2026-05",
+      "2026-06",
+      "2026-07",
+      "2026-08",
+      "2026-09",
+      "2026-10",
+      "2026-11"
+    ]
   },
   "categories": [
     {
@@ -89,6 +103,56 @@
             "ホスティング": 1980,
             "ドメイン": 500
           }
+        },
+        "history": {
+          "2025-12": {
+            "costJpy": 1980,
+            "revenueJpy": 1000
+          },
+          "2026-01": {
+            "costJpy": 1980,
+            "revenueJpy": 1400
+          },
+          "2026-02": {
+            "costJpy": 1980,
+            "revenueJpy": 1800
+          },
+          "2026-03": {
+            "costJpy": 1980,
+            "revenueJpy": 2200
+          },
+          "2026-04": {
+            "costJpy": 1980,
+            "revenueJpy": 2600
+          },
+          "2026-05": {
+            "costJpy": 1980,
+            "revenueJpy": 3000
+          },
+          "2026-06": {
+            "costJpy": 2480,
+            "revenueJpy": 3400
+          },
+          "2026-07": {
+            "costJpy": 2480,
+            "revenueJpy": 3800
+          },
+          "2026-08": {
+            "costJpy": 2480,
+            "revenueJpy": 3300
+          },
+          "2026-09": {
+            "costJpy": 2480,
+            "revenueJpy": 4600
+          },
+          "2026-10": {
+            "costJpy": 2480,
+            "revenueJpy": 3500
+          },
+          "2026-11": {
+            "costJpy": 2480,
+            "revenueJpy": 5000
+          }
         }
       },
       "keys": {
@@ -140,6 +204,56 @@
           "breakdown": {
             "ドメイン": 150
           }
+        },
+        "history": {
+          "2025-12": {
+            "costJpy": 150,
+            "revenueJpy": 0
+          },
+          "2026-01": {
+            "costJpy": 150,
+            "revenueJpy": 0
+          },
+          "2026-02": {
+            "costJpy": 150,
+            "revenueJpy": 0
+          },
+          "2026-03": {
+            "costJpy": 150,
+            "revenueJpy": 0
+          },
+          "2026-04": {
+            "costJpy": 150,
+            "revenueJpy": 0
+          },
+          "2026-05": {
+            "costJpy": 150,
+            "revenueJpy": 0
+          },
+          "2026-06": {
+            "costJpy": 150,
+            "revenueJpy": 0
+          },
+          "2026-07": {
+            "costJpy": 150,
+            "revenueJpy": 0
+          },
+          "2026-08": {
+            "costJpy": 150,
+            "revenueJpy": 0
+          },
+          "2026-09": {
+            "costJpy": 150,
+            "revenueJpy": 0
+          },
+          "2026-10": {
+            "costJpy": 150,
+            "revenueJpy": 0
+          },
+          "2026-11": {
+            "costJpy": 150,
+            "revenueJpy": 0
+          }
         }
       },
       "keys": {
@@ -184,7 +298,25 @@
             "クラウド": 1200
           }
         },
-        "previous": null
+        "previous": null,
+        "history": {
+          "2026-07": {
+            "costJpy": 300,
+            "revenueJpy": 0
+          },
+          "2026-08": {
+            "costJpy": 600,
+            "revenueJpy": 0
+          },
+          "2026-09": {
+            "costJpy": 900,
+            "revenueJpy": 0
+          },
+          "2026-11": {
+            "costJpy": 1200,
+            "revenueJpy": 0
+          }
+        }
       },
       "keys": {
         "count": 6,
@@ -231,6 +363,44 @@
           "costJpy": 800,
           "revenueJpy": 0,
           "breakdown": null
+        },
+        "history": {
+          "2026-02": {
+            "costJpy": 1200,
+            "revenueJpy": 500
+          },
+          "2026-03": {
+            "costJpy": 1200,
+            "revenueJpy": 500
+          },
+          "2026-04": {
+            "costJpy": 1200,
+            "revenueJpy": 500
+          },
+          "2026-05": {
+            "costJpy": 1200,
+            "revenueJpy": 500
+          },
+          "2026-06": {
+            "costJpy": 1200,
+            "revenueJpy": 0
+          },
+          "2026-07": {
+            "costJpy": 1200,
+            "revenueJpy": 0
+          },
+          "2026-08": {
+            "costJpy": 800,
+            "revenueJpy": 0
+          },
+          "2026-09": {
+            "costJpy": 800,
+            "revenueJpy": 0
+          },
+          "2026-10": {
+            "costJpy": 800,
+            "revenueJpy": 0
+          }
         }
       },
       "keys": {
@@ -266,7 +436,8 @@
       "category": "personal",
       "money": {
         "current": null,
-        "previous": null
+        "previous": null,
+        "history": {}
       },
       "keys": null,
       "note": "Heroku の無料枠の終了にあわせて停止。"
@@ -285,7 +456,8 @@
       "category": "sample-club",
       "money": {
         "current": null,
-        "previous": null
+        "previous": null,
+        "history": {}
       },
       "keys": null,
       "note": "まだリポジトリはない。"
@@ -320,6 +492,102 @@
       "account": "個人の組織",
       "category": null,
       "costJpy": 3800
+    },
+    {
+      "month": "2026-09",
+      "provider": "Sample DB",
+      "account": "個人の組織",
+      "category": null,
+      "costJpy": 3800,
+      "provisional": false
+    },
+    {
+      "month": "2026-09",
+      "provider": "Sample Hosting",
+      "account": "サンプル工房のチーム",
+      "category": "sample-studio",
+      "costJpy": 3000,
+      "provisional": false
+    },
+    {
+      "month": "2026-08",
+      "provider": "Sample DB",
+      "account": "個人の組織",
+      "category": null,
+      "costJpy": 3800,
+      "provisional": false
+    },
+    {
+      "month": "2026-08",
+      "provider": "Sample Hosting",
+      "account": "サンプル工房のチーム",
+      "category": "sample-studio",
+      "costJpy": 3000,
+      "provisional": false
+    },
+    {
+      "month": "2026-07",
+      "provider": "Sample DB",
+      "account": "個人の組織",
+      "category": null,
+      "costJpy": 2500,
+      "provisional": false
+    },
+    {
+      "month": "2026-07",
+      "provider": "Sample Hosting",
+      "account": "サンプル工房のチーム",
+      "category": "sample-studio",
+      "costJpy": 3000,
+      "provisional": false
+    },
+    {
+      "month": "2026-06",
+      "provider": "Sample DB",
+      "account": "個人の組織",
+      "category": null,
+      "costJpy": 2500,
+      "provisional": false
+    },
+    {
+      "month": "2026-06",
+      "provider": "Sample Hosting",
+      "account": "サンプル工房のチーム",
+      "category": "sample-studio",
+      "costJpy": 3000,
+      "provisional": false
+    },
+    {
+      "month": "2026-05",
+      "provider": "Sample DB",
+      "account": "個人の組織",
+      "category": null,
+      "costJpy": 2500,
+      "provisional": false
+    },
+    {
+      "month": "2026-05",
+      "provider": "Sample Hosting",
+      "account": "サンプル工房のチーム",
+      "category": "sample-studio",
+      "costJpy": 3000,
+      "provisional": false
+    },
+    {
+      "month": "2026-04",
+      "provider": "Sample Hosting",
+      "account": "サンプル工房のチーム",
+      "category": "sample-studio",
+      "costJpy": 3000,
+      "provisional": false
+    },
+    {
+      "month": "2026-03",
+      "provider": "Sample Hosting",
+      "account": "サンプル工房のチーム",
+      "category": "sample-studio",
+      "costJpy": 3000,
+      "provisional": false
     }
   ]
 }

@@ -38,6 +38,9 @@
     <p id="fatal" class="error" role="alert" hidden></p>
 
     <section id="app" tabindex="-1" hidden>
+      <div class="toggle-group view-switch" id="view-switch" role="group" aria-label="表示の切り替え" hidden></div>
+
+      <div id="list-view">
       <div class="filters">
         <div class="search-row">
           <input id="search" type="search" placeholder="名前、説明、インフラ、タグなどで検索" aria-label="検索">
@@ -103,6 +106,33 @@
         </div>
         <p id="shared-empty" class="shared-note" hidden></p>
       </section>
+      </div>
+
+      <div id="trends-view" hidden>
+        <section class="summary" aria-labelledby="trend-title">
+          <h2 id="trend-title">月ごとの費用と収益</h2>
+          <p class="summary-note" id="trend-note"></p>
+          <div class="viz-legend" id="trend-legend"></div>
+          <div class="viz" id="trend-chart"></div>
+          <details class="viz-table-details">
+            <summary>表で見る</summary>
+            <div class="trend-table-wrap">
+              <table class="shared-table" id="trend-table"></table>
+            </div>
+          </details>
+        </section>
+
+        <section class="shared" aria-labelledby="category-title">
+          <div class="summary-head">
+            <h2 id="category-title">区分ごとの集計</h2>
+            <label class="month-select">月 <select id="category-month"></select></label>
+          </div>
+          <p class="shared-note">共通の費用は、区分が付いているものはその区分に、付いていないものは「共通」にまとめています。グラフの月を押しても、月を選べます。</p>
+          <div class="shared-wrap category-wrap">
+            <table class="shared-table" id="category-table"></table>
+          </div>
+        </section>
+      </div>
 
       <footer class="legend">
         <span><i class="dot dot-up"></i>稼働中</span>

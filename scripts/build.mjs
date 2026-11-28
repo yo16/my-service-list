@@ -89,11 +89,16 @@ async function fetchOptional(table, query) {
   return null;
 }
 
-// 今月と先月（日本時間）の費用と収益、共通の費用、キー、区分をまとめて読む
+/** 推移のグラフに出す月の数。今月を含めて、さかのぼる */
+const HISTORY_MONTHS = 12;
+
+// 直近 12 か月（日本時間。今月を含む）の費用と収益、共通の費用と、キー、区分をまとめて読む
 async function fetchMetrics(now = new Date()) {
   const current = monthOf(now);
   const previous = previousMonth(current);
-  const range = `month=in.(${previous}-01,${current}-01)`;
+  const list = [current];
+  while (list.length < HISTORY_MONTHS) list.unshift(previousMonth(list[0]));
+  const range = `month=gte.${list[0]}-01&month=lte.${current}-01`;
   // あとから足した列（取得元ごとの費用、暫定の印）がまだ無いときは、その列を除いて読み直す
   const withFallback = async (table, columns, added, rest) => (
     (await fetchOptional(table, `select=${columns},${added}&${rest}`)) ?? fetchOptional(table, `select=${columns}&${rest}`)
@@ -104,7 +109,7 @@ async function fetchMetrics(now = new Date()) {
     withFallback('shared_monthly_costs', 'month,provider,account,category,cost_jpy', 'provisional', `${range}&order=month.desc,provider.asc,account.asc`),
     fetchOptional('service_keys', 'select=service_id,key_count,nearest_expiry,checked_at'),
   ]);
-  return { months: { current, previous }, categories, monthly, shared, keys };
+  return { months: { current, previous, list }, categories, monthly, shared, keys };
 }
 
 // ---------- GitHub ----------
@@ -302,6 +307,13 @@ function addMetrics(service, row, metrics) {
     service.money = {
       current: monthMoney(metrics.monthly, row.id, metrics.months.current),
       previous: monthMoney(metrics.monthly, row.id, metrics.months.previous),
+      // 推移のグラフ用。行がある月だけを、合計の金額だけで持つ（内訳や取得元は今月と先月の分にだけ付ける）
+      history: Object.fromEntries(
+        metrics.monthly
+          .filter((x) => String(x.service_id) === String(row.id))
+          .map((x) => [String(x.month).slice(0, 7), { costJpy: x.cost_jpy, revenueJpy: x.revenue_jpy }])
+          .sort((a, b) => a[0].localeCompare(b[0])),
+      ),
     };
   }
   if (metrics.keys) {

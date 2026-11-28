@@ -30,6 +30,8 @@
     infra: new Set(),
     categories: new Set(), // 空なら、すべての区分を出す
     month: 'current',      // 費用と収益を出す月。current（今月）か previous（先月）
+    view: 'list',          // list（一覧）か trends（推移と集計）
+    trendMonth: null,      // 区分ごとの集計を出す月（YYYY-MM）
     sort: { key: 'id', dir: 'asc' },
     expanded: new Set(),
   };
@@ -317,6 +319,8 @@
     renderTagFilter();
     renderLegend();
     bindControls();
+    state.trendMonth = monthName(state.month);
+    setView('list');
     renderSummary();
     renderShared();
     renderRows();
@@ -572,6 +576,11 @@
     $('#tag-details').open = wide;
     $('#infra-details').open = wide;
     $('#clear-filters').addEventListener('click', clearFilters);
+    $('#category-month').addEventListener('change', (e) => {
+      state.trendMonth = e.target.value;
+      renderTrends();
+      $('#category-month').focus();
+    });
     $('#search').addEventListener('input', (e) => {
       state.query = e.target.value.trim().toLowerCase();
       renderRows();
@@ -863,7 +872,342 @@
     ]));
 
     td.append(grid);
+
+    // そのサービスの月ごとの費用と収益。金額の入っている月が無ければ出さない
+    const months = trendMonths().filter((m) => historyOf(s, m));
+    if (months.length) {
+      const first = trendMonths().indexOf(months[0]);
+      const rows = trendMonths().slice(first).map((m) => {
+        const h = historyOf(s, m);
+        return { month: m, values: { cost: h ? h.costJpy : null, revenue: h ? h.revenueJpy : null } };
+      });
+      const columns = [[SERIES.cost], [SERIES.revenue]];
+      const host = el('div', { class: 'viz' });
+      td.append(el('div', { class: 'service-trend' }, [
+        el('h3', { text: '月ごとの費用と収益' }),
+        legend(columns.flat()),
+        host,
+      ]));
+      drawChart(host, rows, columns, { height: 150, label: `${s.name} の月ごとの費用と収益` });
+    }
     return el('tr', { class: 'detail' }, td);
+  }
+
+  // ---------- 推移と集計 ----------
+
+  // グラフの系列。色は系列に付けて固定する（表示する系列が減っても、残った系列の色は変えない）
+  const SERIES = {
+    cost: { key: 'cost', label: '費用', cls: 'viz-s1' },
+    serviceCost: { key: 'serviceCost', label: 'サービスごとの費用', cls: 'viz-s1' },
+    sharedCost: { key: 'sharedCost', label: '共通の費用', cls: 'viz-s2' },
+    revenue: { key: 'revenue', label: '収益', cls: 'viz-s3' },
+  };
+
+  // 出力に入っている月（古い順）。12 か月分の出力が無いとき（古い形のデータ）は、先月と今月だけ
+  function trendMonths() {
+    const m = state.data.months;
+    if (!m) return [];
+    if (Array.isArray(m.list) && m.list.length) return m.list;
+    return [m.previous, m.current].filter(Boolean);
+  }
+
+  // ある月（YYYY-MM）の、サービスの費用と収益。行が無ければ null
+  function historyOf(s, month) {
+    const money = s.money;
+    if (!money) return null;
+    if (money.history && money.history[month]) return money.history[month];
+    const m = state.data.months || {};
+    if (month === m.current) return money.current || null;
+    if (month === m.previous) return money.previous || null;
+    return null;
+  }
+  const sharedIn = (month) => (state.data.sharedCosts || []).filter((c) => c.month === month);
+
+  // 月ごとの合計。金額が 1 件も入っていない月は entered を false にする
+  function monthTotals(month) {
+    const entered = state.data.services.map((s) => historyOf(s, month)).filter(Boolean);
+    const shared = sharedIn(month);
+    const serviceCost = entered.reduce((sum, h) => sum + h.costJpy, 0);
+    const sharedCost = shared.reduce((sum, c) => sum + c.costJpy, 0);
+    const revenue = entered.reduce((sum, h) => sum + h.revenueJpy, 0);
+    return { month, entered: entered.length > 0 || shared.length > 0, serviceCost, sharedCost, revenue, net: revenue - serviceCost - sharedCost };
+  }
+
+  // 区分ごとの集計。共通の費用は、区分が付いていればその区分に、付いていなければ「共通」に入れる。
+  // 行の合計は、月の合計（monthTotals）と一致する
+  function categoryRows(month) {
+    const rows = new Map();
+    const rowOf = (key, label) => {
+      if (!rows.has(key)) rows.set(key, { key, label, serviceCost: 0, sharedCost: 0, revenue: 0, count: 0 });
+      return rows.get(key);
+    };
+    for (const c of state.data.categories || []) rowOf(c.key, c.label);
+    for (const s of state.data.services) {
+      const h = historyOf(s, month);
+      if (!h) continue;
+      const row = rowOf(s.category || '', s.category ? categoryLabel(s.category) : '（区分なし）');
+      row.serviceCost += h.costJpy;
+      row.revenue += h.revenueJpy;
+      row.count++;
+    }
+    for (const c of sharedIn(month)) {
+      const row = c.category ? rowOf(c.category, categoryLabel(c.category)) : rowOf('\u0000shared', '共通');
+      row.sharedCost += c.costJpy;
+      row.count++;
+    }
+    return [...rows.values()].map((r) => ({ ...r, cost: r.serviceCost + r.sharedCost, net: r.revenue - r.serviceCost - r.sharedCost }));
+  }
+
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  function svgEl(tag, attrs = {}, children = []) {
+    const node = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v == null || v === false) continue;
+      if (k === 'text') node.textContent = v;
+      else node.setAttribute(k, v);
+    }
+    for (const c of [].concat(children)) if (c) node.append(c);
+    return node;
+  }
+
+  // 軸の上端と目盛りの間隔を、切りのよい数にする（目盛りは 5 本まで）
+  function niceScale(max) {
+    if (!(max > 0)) return { top: 1000, step: 500 };
+    const pow = 10 ** Math.floor(Math.log10(max));
+    const step = [0.2, 0.5, 1, 2, 5, 10].map((k) => k * pow).find((st) => max / st <= 5);
+    return { top: Math.ceil(max / step) * step, step };
+  }
+  // 目盛りの数字。1 万円以上の軸は「万」でまとめ、1 つの軸の中で書き方をそろえる
+  const axisLabel = (v, top) => (top >= 10000 ? (v === 0 ? '0' : `${Number((v / 10000).toFixed(2))}万`) : v.toLocaleString('ja-JP'));
+
+  function legend(seriesList) {
+    return el('div', { class: 'viz-legend' }, seriesList.map((sr) => el('span', { class: 'viz-legend-item' }, [
+      el('i', { class: `viz-swatch ${sr.cls}` }),
+      sr.label,
+    ])));
+  }
+
+  // 幅が変わったら描き直す。host ごとに、最後に描いた幅と描き直す関数を持つ
+  const chartObserver = typeof ResizeObserver === 'function'
+    ? new ResizeObserver((entries) => {
+      for (const e of entries) {
+        const host = e.target;
+        if (host.isConnected && host.vizRedraw && Math.round(e.contentRect.width) !== host.vizWidth) host.vizRedraw();
+      }
+    })
+    : null;
+
+  /**
+   * 月ごとの棒グラフを SVG で描く。外部のライブラリは使わない。
+   * rows は [{ month, values: { 系列のキー: 金額か null } }]、columns は月ごとに並べる棒の列で、
+   * 1 本の棒は下から積む系列の配列（例: [[サービスごとの費用, 共通の費用], [収益]]）。縦軸は 1 本だけ。
+   * 色だけに頼らないよう、凡例、月ごとの値の吹き出し（ホバーとフォーカス）、表（呼び出し側）を併せて出す。
+   */
+  function drawChart(host, rows, columns, { height = 220, label = '', selected = null, onSelect = null } = {}) {
+    host.vizRedraw = () => drawChart(host, rows, columns, { height, label, selected, onSelect });
+    if (chartObserver) chartObserver.observe(host);
+    const hadFocus = host.contains(document.activeElement) ? document.activeElement.dataset.month : null;
+    const width = Math.max(Math.round(host.clientWidth), 260);
+    host.vizWidth = Math.round(host.clientWidth);
+    const m = { top: 10, right: 8, bottom: 38, left: 44 };
+    const plotW = width - m.left - m.right;
+    const plotH = height - m.top - m.bottom;
+    // 月が少ないときに棒の間が開きすぎないよう、1 か月の幅に上限を置いて左に寄せる
+    const band = Math.min(plotW / rows.length, 84);
+    const gap = 2;
+    const barW = Math.max(3, Math.min(24, (band - 8 - gap * (columns.length - 1)) / columns.length));
+    const groupW = barW * columns.length + gap * (columns.length - 1);
+    const total = (row, col) => col.reduce((sum, sr) => sum + (row.values[sr.key] || 0), 0);
+    const { top, step } = niceScale(Math.max(0, ...rows.flatMap((r) => columns.map((c) => total(r, c)))));
+    const y = (v) => m.top + plotH - (v / top) * plotH;
+
+    const svg = svgEl('svg', { class: 'viz-svg', width, height, viewBox: `0 0 ${width} ${height}`, role: 'group', 'aria-label': label });
+    for (let v = 0; v <= top + step / 2; v += step) {
+      svg.append(svgEl('line', { class: v === 0 ? 'viz-axis' : 'viz-grid', x1: m.left, x2: width - m.right, y1: y(v), y2: y(v) }));
+      svg.append(svgEl('text', { class: 'viz-tick', x: m.left - 6, y: y(v) + 4, 'text-anchor': 'end', text: axisLabel(v, top) }));
+    }
+
+    const tip = el('div', { class: 'viz-tip', hidden: true, role: 'status' });
+    const showTip = (row, centerX) => {
+      const seriesList = columns.flat();
+      const has = seriesList.some((sr) => row.values[sr.key] != null);
+      tip.replaceChildren(
+        el('div', { class: 'viz-tip-title', text: row.month }),
+        ...(has
+          ? seriesList.map((sr) => el('div', { class: 'viz-tip-row' }, [
+            el('i', { class: `viz-swatch ${sr.cls}` }),
+            el('span', { class: 'viz-tip-label', text: sr.label }),
+            el('span', { class: 'viz-tip-value', text: row.values[sr.key] == null ? '—' : yen(row.values[sr.key]) }),
+          ]))
+          : [el('div', { class: 'viz-tip-row', text: '金額は入っていません' })]),
+      );
+      if (has && row.net != null) {
+        tip.append(el('div', { class: 'viz-tip-row viz-tip-net' }, [
+          el('span', { class: 'viz-tip-label', text: '差し引き' }),
+          el('span', { class: `viz-tip-value ${netClass(row.net)}`, text: signedYen(row.net) }),
+        ]));
+      }
+      tip.hidden = false;
+      // 棒に重ねないよう、その月の右隣に出す。右に入らなければ左隣に出す
+      const w = tip.offsetWidth;
+      const right = centerX + band / 2 + 6;
+      const left = right + w <= width ? right : centerX - band / 2 - 6 - w;
+      // 狭い画面で左右どちらにも入らないときは、グラフの下に出す
+      tip.style.top = left < 0 ? '100%' : '0';
+      tip.style.left = `${Math.max(0, Math.min(width - w, left))}px`;
+    };
+    const hideTip = () => { tip.hidden = true; };
+
+    rows.forEach((row, i) => {
+      const x0 = m.left + i * band;
+      const center = x0 + band / 2;
+      const parts = columns.flat().map((sr) => `${sr.label} ${row.values[sr.key] == null ? 'なし' : yen(row.values[sr.key])}`);
+      const g = svgEl('g', {
+        class: `viz-band${row.month === selected ? ' is-selected' : ''}`,
+        tabindex: '0',
+        role: onSelect ? 'button' : 'img',
+        'aria-label': `${row.month}: ${parts.join('、')}${onSelect ? '。押すと、この月の集計を出します' : ''}`,
+        'aria-pressed': onSelect ? String(row.month === selected) : null,
+        'data-month': row.month,
+      });
+      // 月の幅いっぱいを、ホバーとクリックの当たり判定にする（棒より広く取る）
+      g.append(svgEl('rect', { class: 'viz-hit', x: x0, y: m.top, width: band, height: plotH + m.bottom }));
+      columns.forEach((col, j) => {
+        const x = x0 + (band - groupW) / 2 + j * (barW + gap);
+        const segments = col.filter((sr) => (row.values[sr.key] || 0) > 0);
+        let base = 0;
+        segments.forEach((sr, k) => {
+          const v = row.values[sr.key];
+          const yb = y(base) - (k > 0 ? gap : 0); // 積んだ系列の間は、地の色のすき間で分ける
+          const yt = Math.min(y(base + v), yb - 1);
+          const r = k === segments.length - 1 ? Math.min(4, (yb - yt), barW / 2) : 0; // 丸めるのは先端だけ。基線の側は四角
+          g.append(svgEl('path', {
+            class: `viz-bar ${sr.cls}`,
+            d: `M${x},${yb}V${yt + r}Q${x},${yt} ${x + r},${yt}H${x + barW - r}Q${x + barW},${yt} ${x + barW},${yt + r}V${yb}Z`,
+          }));
+          base += v;
+        });
+      });
+      const [year, mon] = row.month.split('-');
+      g.append(svgEl('text', { class: 'viz-tick', x: center, y: m.top + plotH + 16, 'text-anchor': 'middle', text: String(Number(mon)) }));
+      // 年は、左端の月と 1 月にだけ出す
+      if (i === 0 || mon === '01') {
+        g.append(svgEl('text', { class: 'viz-tick viz-year', x: center, y: m.top + plotH + 31, 'text-anchor': i === 0 ? 'start' : 'middle', dx: i === 0 ? -band / 2 + 2 : 0, text: `${year}年` }));
+      }
+      g.addEventListener('pointerenter', () => showTip(row, center));
+      g.addEventListener('pointerleave', hideTip);
+      g.addEventListener('focus', () => showTip(row, center));
+      g.addEventListener('blur', hideTip);
+      if (onSelect) {
+        g.addEventListener('click', () => onSelect(row.month));
+        g.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          e.preventDefault();
+          onSelect(row.month);
+        });
+      }
+      svg.append(g);
+    });
+
+    host.replaceChildren(svg, tip);
+    if (hadFocus) {
+      const again = host.querySelector(`[data-month="${hadFocus}"]`);
+      if (again) again.focus();
+    }
+  }
+
+  function setView(view) {
+    state.view = view;
+    renderViewSwitch();
+    $('#list-view').hidden = view !== 'list';
+    $('#trends-view').hidden = view !== 'trends';
+    if (view === 'trends') renderTrends();
+  }
+
+  function renderViewSwitch() {
+    const sw = $('#view-switch');
+    // 月ごとの金額が出力に無いときは、切り替えそのものを出さない
+    sw.hidden = !state.data.months;
+    if (sw.hidden) return;
+    const hadFocus = sw.contains(document.activeElement);
+    sw.replaceChildren(...[['list', '一覧'], ['trends', '推移と集計']].map(([key, label]) => el('button', {
+      type: 'button',
+      class: 'toggle',
+      'aria-pressed': String(state.view === key),
+      text: label,
+      onclick: () => setView(key),
+    })));
+    if (hadFocus) sw.querySelector('[aria-pressed="true"]').focus();
+  }
+
+  const num = (text, cls) => el('td', { class: `num ${cls || ''}`, text });
+
+  function renderTrends() {
+    // 金額が入っている最初の月から出す。1 件も無ければ、今月だけを空で出す
+    const all = trendMonths().map(monthTotals);
+    const firstEntered = all.findIndex((t) => t.entered);
+    const totals = firstEntered >= 0 ? all.slice(firstEntered) : all.slice(-1);
+    const months = totals.map((t) => t.month);
+    if (!months.includes(state.trendMonth)) state.trendMonth = months[months.length - 1];
+
+    $('#trend-note').textContent = firstEntered >= 0
+      ? `${months[0]} から ${months[months.length - 1]} まで。費用は、サービスごとの費用の上に共通の費用を積んでいます。月が締まる前の金額を含むことがあります。`
+      : '金額は、まだ入っていません。';
+
+    const columns = [[SERIES.serviceCost, SERIES.sharedCost], [SERIES.revenue]];
+    $('#trend-legend').replaceChildren(...legend(columns.flat()).children);
+    const rows = totals.map((t) => ({
+      month: t.month,
+      net: t.net,
+      values: t.entered ? { serviceCost: t.serviceCost, sharedCost: t.sharedCost, revenue: t.revenue } : {},
+    }));
+    drawChart($('#trend-chart'), rows, columns, {
+      label: '月ごとの費用と収益のグラフ',
+      selected: state.trendMonth,
+      onSelect: (month) => { state.trendMonth = month; renderTrends(); },
+    });
+
+    const none = () => el('td', { class: 'num none', text: '—' });
+    $('#trend-table').replaceChildren(
+      el('thead', {}, el('tr', {}, [
+        el('th', { scope: 'col', text: '月' }),
+        ...['サービスごとの費用', '共通の費用', '費用の合計', '収益', '差し引き'].map((t) => el('th', { scope: 'col', class: 'num', text: t })),
+      ])),
+      el('tbody', {}, [...totals].reverse().map((t) => el('tr', {}, [
+        el('th', { scope: 'row', text: t.month }),
+        ...(t.entered
+          ? [num(yen(t.serviceCost)), num(yen(t.sharedCost)), num(yen(t.serviceCost + t.sharedCost)), num(yen(t.revenue)), num(signedYen(t.net), netClass(t.net))]
+          : [none(), none(), none(), none(), none()]),
+      ]))),
+    );
+
+    const select = $('#category-month');
+    select.replaceChildren(...[...months].reverse().map((mo) => el('option', { value: mo, text: mo })));
+    select.value = state.trendMonth;
+    renderCategoryTable();
+  }
+
+  function renderCategoryTable() {
+    const month = state.trendMonth;
+    const rows = categoryRows(month);
+    const sum = (key) => rows.reduce((acc, r) => acc + r[key], 0);
+    const cells = (r, empty) => (empty
+      ? Array.from({ length: 5 }, () => el('td', { class: 'num none', text: '—' }))
+      : [num(yen(r.serviceCost)), num(yen(r.sharedCost)), num(yen(r.cost)), num(yen(r.revenue)), num(signedYen(r.net), netClass(r.net))]);
+    const any = rows.some((r) => r.count > 0);
+    $('#category-title').textContent = `区分ごとの集計（${month}）`;
+    $('#category-table').replaceChildren(
+      el('thead', {}, el('tr', {}, [
+        el('th', { scope: 'col', text: '区分' }),
+        ...['サービスごとの費用', '共通の費用', '費用の合計', '収益', '差し引き'].map((t) => el('th', { scope: 'col', class: 'num', text: t })),
+      ])),
+      // 金額が 1 件も入っていない区分は、0 円と区別するために — を出す
+      el('tbody', {}, rows.map((r) => el('tr', {}, [el('th', { scope: 'row', text: r.label }), ...cells(r, r.count === 0)]))),
+      el('tfoot', {}, el('tr', {}, [
+        el('th', { scope: 'row', text: '合計' }),
+        ...cells({ serviceCost: sum('serviceCost'), sharedCost: sum('sharedCost'), cost: sum('cost'), revenue: sum('revenue'), net: sum('net') }, !any),
+      ])),
+    );
   }
 
   main();
