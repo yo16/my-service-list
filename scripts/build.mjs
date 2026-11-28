@@ -23,7 +23,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pickLanguages, mergeTags } from './lib/tags.mjs';
 import { probeSite, readRepoSignals, detectInfra, applyManualInfra } from './lib/infra.mjs';
-import { monthOf, previousMonth } from './lib/metrics.mjs';
+import { monthOf, previousMonth, sourcesOf } from './lib/metrics.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SITE_DIR = path.join(ROOT, 'site');
@@ -79,7 +79,7 @@ async function fetchOptional(table, query) {
     }
     // PGRST205 と 42P01 は表が無い、42703 は列が無い
     if (res.status === 404 || ['PGRST205', '42P01', '42703'].includes(code)) {
-      log(`${table} はまだ無いので、その分を含めずに続けます（supabase/schema.sql を実行すると出ます）`);
+      log(`${table} の表か、あとから足した列がまだ無いので、読める範囲で続けます（supabase/schema.sql を実行すると出ます）`);
     } else {
       warn(`${table} を読めないので、その分を含めずに続けます: 応答が ${res.status}${code ? `（${code}）` : ''}`);
     }
@@ -94,10 +94,14 @@ async function fetchMetrics(now = new Date()) {
   const current = monthOf(now);
   const previous = previousMonth(current);
   const range = `month=in.(${previous}-01,${current}-01)`;
+  // あとから足した列（取得元ごとの費用、暫定の印）がまだ無いときは、その列を除いて読み直す
+  const withFallback = async (table, columns, added, rest) => (
+    (await fetchOptional(table, `select=${columns},${added}&${rest}`)) ?? fetchOptional(table, `select=${columns}&${rest}`)
+  );
   const [categories, monthly, shared, keys] = await Promise.all([
     fetchOptional('service_categories', 'select=key,label,sort_order&order=sort_order.asc,key.asc'),
-    fetchOptional('service_monthly', `select=service_id,month,cost_jpy,revenue_jpy,breakdown&${range}`),
-    fetchOptional('shared_monthly_costs', `select=month,provider,account,category,cost_jpy&${range}&order=month.desc,provider.asc,account.asc`),
+    withFallback('service_monthly', 'service_id,month,cost_jpy,revenue_jpy,breakdown', 'source,cost_sources,updated_at', range),
+    withFallback('shared_monthly_costs', 'month,provider,account,category,cost_jpy', 'provisional', `${range}&order=month.desc,provider.asc,account.asc`),
     fetchOptional('service_keys', 'select=service_id,key_count,nearest_expiry,checked_at'),
   ]);
   return { months: { current, previous }, categories, monthly, shared, keys };
@@ -273,7 +277,21 @@ async function resolveInfra(row, repo, url) {
 function monthMoney(rows, serviceId, month) {
   const r = rows.find((x) => String(x.service_id) === String(serviceId) && String(x.month).slice(0, 7) === month);
   if (!r) return null;
-  return { costJpy: r.cost_jpy, revenueJpy: r.revenue_jpy, breakdown: r.breakdown || null };
+  const money = { costJpy: r.cost_jpy, revenueJpy: r.revenue_jpy, breakdown: r.breakdown || null };
+  // 取得元ごとの費用。列がまだ無いとき（読み直したとき）は項目ごと出さない
+  if ('cost_sources' in r) {
+    money.sources = Object.entries(sourcesOf(r))
+      .map(([source, e]) => ({
+        source,
+        costJpy: e.cost_jpy,
+        breakdown: e.breakdown || null,
+        provisional: Boolean(e.provisional),
+        updatedAt: e.updated_at || null,
+      }))
+      .sort((a, b) => a.source.localeCompare(b.source));
+    money.provisional = money.sources.some((e) => e.provisional);
+  }
+  return money;
 }
 
 // 区分、費用と収益、キーをサービスに足す。読めなかった表の分は項目ごと足さない（今までどおりの形になる）
@@ -386,6 +404,7 @@ async function buildData() {
       account: c.account,
       category: c.category || null,
       costJpy: c.cost_jpy,
+      ...('provisional' in c ? { provisional: Boolean(c.provisional) } : {}),
     }));
   }
   return data;

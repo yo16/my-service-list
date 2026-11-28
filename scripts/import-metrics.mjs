@@ -5,6 +5,7 @@
  * service_monthly、shared_monthly_costs、service_keys に upsert する。
  * 検証でエラーが 1 つでもあれば、何も書き込まずに終了コード 1 で止まる。
  * 同じファイルを何度取り込んでも、同じ行を上書きするだけで結果は変わらない。
+ * 費用は取得元（JSON の source）ごとに持つ。同じ取得元をもう一度取り込むと、その取得元の分だけが置き換わる。
  * Node 22 以上の標準機能だけで動く。npm の依存はない。
  *
  * 使い方:
@@ -22,6 +23,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseEnv } from 'node:util';
 import { validatePayload } from './lib/metrics.mjs';
+import { writeMetrics } from './lib/metrics-store.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -75,18 +77,18 @@ async function supabase(method, pathname, body) {
     } catch {
       /* JSON でなければそのまま */
     }
-    const hint = res.status === 404 ? '（表がまだ無いなら、supabase/schema.sql を SQL Editor で実行してください）' : '';
+    // 表が無い（404、PGRST205、42P01）か、あとから足した列が無い（42703、PGRST204）
+    const missing = res.status === 404 || /\b(PGRST204|PGRST205|42P01|42703)\b/.test(message);
+    const hint = missing ? '（表や列がまだ無いなら、supabase/schema.sql を SQL Editor で実行してください。何度実行しても同じ結果になります）' : '';
     throw new Error(`Supabase の応答が ${res.status}: ${message}${hint}`);
   }
   return text ? JSON.parse(text) : null;
 }
 
-// 表ごとの、重複を判定する列。upsert の on_conflict に渡す
-const TABLES = [
-  ['service_monthly', 'service_id,month'],
-  ['shared_monthly_costs', 'month,provider,account'],
-  ['service_keys', 'service_id'],
-];
+const io = {
+  get: (pathname) => supabase('GET', pathname),
+  upsert: (table, conflict, rows) => supabase('POST', `/${table}?on_conflict=${conflict}`, rows),
+};
 
 async function main() {
   if (unknownFlags.length) throw new Error(`知らないオプションです: ${unknownFlags.join(' ')}`);
@@ -109,22 +111,18 @@ async function main() {
     throw new Error(`検証で ${errors.length} 件のエラーがありました。何も書き込んでいません`);
   }
 
-  const counts = TABLES.map(([table]) => `${table} ${rows[table].length} 行`).join('、');
+  const counts = `service_monthly ${rows.monthly_inputs.length} 行、shared_monthly_costs ${rows.shared_monthly_costs.length} 行、service_keys ${rows.service_keys.length} 行`;
   if (DRY_RUN) {
     log(`--dry-run: 検証を通りました（${input.month}）。書き込む予定: ${counts}。何も書き込んでいません`);
     return;
   }
 
-  const done = [];
-  for (const [table, conflict] of TABLES) {
-    if (!rows[table].length) continue;
-    try {
-      await supabase('POST', `/${table}?on_conflict=${conflict}`, rows[table]);
-    } catch (e) {
-      const before = done.length ? `${done.join('、')} は書き込み済みです。` : 'まだ何も書き込んでいません。';
-      throw new Error(`${table} の書き込みに失敗しました。${before}原因を直して同じファイルをもう一度取り込めば、同じ行が上書きされます: ${e.message}`);
-    }
-    done.push(table);
+  try {
+    await writeMetrics(io, rows);
+  } catch (e) {
+    if (!e.table) throw e;
+    const before = e.done.length ? `${e.done.join('、')} は書き込み済みです。` : 'まだ何も書き込んでいません。';
+    throw new Error(`${e.table} の書き込みに失敗しました。${before}原因を直して同じファイルをもう一度取り込めば、同じ行が上書きされます: ${e.message}`);
   }
   log(`取り込みました（${input.month}）: ${counts}`);
   log('一覧ページには、次の同期（最長 1 時間）か、登録画面の「一覧ページに反映する」で出ます');

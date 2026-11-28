@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validatePayload, monthOf, previousMonth, isMonth, isRealDate } from './metrics.mjs';
+import { validatePayload, mergeMonthly, sourcesOf, monthOf, previousMonth, isMonth, isRealDate } from './metrics.mjs';
 
 const context = { serviceIds: [1, 2, 3], categoryKeys: ['personal', 'sample-club'], now: new Date('2026-11-24T00:00:00Z') };
 const check = (input) => validatePayload(input, context);
@@ -20,24 +20,86 @@ const valid = () => ({
 test('正しい JSON を受け付け、表ごとの行に直す', () => {
   const { errors, rows } = check(valid());
   assert.deepEqual(errors, []);
-  assert.equal(rows.service_monthly.length, 2);
+  assert.equal(rows.monthly_inputs.length, 2);
   assert.equal(rows.shared_monthly_costs.length, 1);
   assert.equal(rows.service_keys.length, 2);
-  assert.deepEqual(rows.service_monthly[0], {
+  assert.deepEqual(rows.monthly_inputs[0], {
     service_id: 1,
     month: '2026-11-01',
-    cost_jpy: 1350,
-    revenue_jpy: 500,
-    breakdown: { クラウド: 1200, ドメイン: 150 },
     source: 'import',
+    cost: { cost_jpy: 1350, breakdown: { クラウド: 1200, ドメイン: 150 }, provisional: false },
+    revenue_jpy: 500,
     updated_at: '2026-11-24T00:00:00.000Z',
   });
-  // 書かなかった金額は 0 にする
-  assert.equal(rows.service_monthly[1].revenue_jpy, 0);
+  // 書かなかった収益は null（今の値を残す）
+  assert.equal(rows.monthly_inputs[1].revenue_jpy, null);
   assert.deepEqual(rows.service_keys[1], { service_id: 2, key_count: 0, nearest_expiry: null, checked_at: '2026-11-24T00:00:00.000Z' });
   assert.deepEqual(rows.shared_monthly_costs[0], {
-    month: '2026-11-01', provider: 'Sample Hosting', account: 'サンプルのチーム', category: 'sample-club', cost_jpy: 3000, updated_at: '2026-11-24T00:00:00.000Z',
+    month: '2026-11-01', provider: 'Sample Hosting', account: 'サンプルのチーム', category: 'sample-club', cost_jpy: 3000, provisional: false, updated_at: '2026-11-24T00:00:00.000Z',
   });
+});
+
+test('収益だけを書くと、費用には触れない', () => {
+  const { rows } = check({ month: '2026-11', services: [{ id: 1, revenue_jpy: 800 }] });
+  assert.equal(rows.monthly_inputs[0].cost, null);
+  assert.equal(rows.monthly_inputs[0].revenue_jpy, 800);
+});
+
+test('provisional は、費用と共通の費用に付く', () => {
+  const input = valid();
+  input.provisional = true;
+  const { rows } = check(input);
+  assert.equal(rows.monthly_inputs[0].cost.provisional, true);
+  assert.equal(rows.shared_monthly_costs[0].provisional, true);
+});
+
+// ---------- 取得元ごとの費用 ----------
+
+const inputOf = (source, cost, extra = {}) => {
+  const { rows } = check({ month: '2026-11', source, services: [{ id: 1, ...cost }], ...extra });
+  return rows.monthly_inputs[0];
+};
+
+test('2 つの取得元から取り込むと、両方の金額が残り、合計が正しい', () => {
+  const first = mergeMonthly(null, inputOf('cloud-a', { cost_jpy: 1200, breakdown: { 計算: 1000, 保存: 200 } }));
+  const both = mergeMonthly(first, inputOf('cloud-b', { cost_jpy: 300, breakdown: { 保存: 300 } }));
+  assert.equal(both.cost_jpy, 1500);
+  assert.deepEqual(Object.keys(both.cost_sources), ['cloud-a', 'cloud-b']);
+  assert.equal(both.cost_sources['cloud-a'].cost_jpy, 1200);
+  assert.deepEqual(both.breakdown, { 計算: 1000, 保存: 500 }); // 内訳は名前ごとに足し合わせ、合計は費用と一致する
+});
+
+test('同じ取得元を 2 回取り込むと、その分だけが置き換わる', () => {
+  let row = mergeMonthly(null, inputOf('cloud-a', { cost_jpy: 1200 }));
+  row = mergeMonthly(row, inputOf('manual', { cost_jpy: 150, revenue_jpy: 500 }));
+  row = mergeMonthly(row, inputOf('cloud-a', { cost_jpy: 900 }));
+  assert.equal(row.cost_jpy, 1050);
+  assert.equal(row.cost_sources.manual.cost_jpy, 150);
+  assert.equal(row.revenue_jpy, 500); // 収益を書かない取り込みでは、収益は変わらない
+});
+
+test('内訳の無い取得元があるときは、月の内訳を持たない', () => {
+  let row = mergeMonthly(null, inputOf('cloud-a', { cost_jpy: 1200, breakdown: { 計算: 1200 } }));
+  row = mergeMonthly(row, inputOf('manual', { cost_jpy: 150 }));
+  assert.equal(row.breakdown, null);
+  assert.deepEqual(row.cost_sources['cloud-a'].breakdown, { 計算: 1200 });
+});
+
+test('途中の金額を確定した金額で取り込み直すと、暫定の印が外れる', () => {
+  let row = mergeMonthly(null, inputOf('cloud-a', { cost_jpy: 400 }, { provisional: true }));
+  assert.equal(row.cost_sources['cloud-a'].provisional, true);
+  row = mergeMonthly(row, inputOf('cloud-a', { cost_jpy: 1200 }));
+  assert.equal(row.cost_sources['cloud-a'].provisional, false);
+});
+
+test('取得元ごとの列ができる前の行は、1 つの取得元として読み、消さずに重ねる', () => {
+  const legacy = { service_id: 1, month: '2026-11-01', cost_jpy: 1350, revenue_jpy: 500, breakdown: { クラウド: 1200, ドメイン: 150 }, source: 'manual', updated_at: '2026-11-20T00:00:00.000Z' };
+  assert.deepEqual(sourcesOf(legacy), { manual: { cost_jpy: 1350, breakdown: { クラウド: 1200, ドメイン: 150 }, provisional: false, updated_at: '2026-11-20T00:00:00.000Z' } });
+  const row = mergeMonthly(legacy, inputOf('cloud-a', { cost_jpy: 300 }));
+  assert.equal(row.cost_jpy, 1650);
+  assert.equal(row.revenue_jpy, 500);
+  // 金額が 0 で内訳も無い昔の行は、取得元なしとして読む
+  assert.deepEqual(sourcesOf({ cost_jpy: 0, revenue_jpy: 0, breakdown: null, source: 'manual' }), {});
 });
 
 test('キーだけ、共通の費用だけでも受け付ける', () => {
@@ -63,6 +125,7 @@ rejects('小数の金額', (d) => { d.services[2].cost_jpy = 10.5; }, /円の整
 rejects('文字列の金額', (d) => { d.services[2].cost_jpy = '100'; }, /円の整数/);
 rejects('けた違いの金額', (d) => { d.services[2].cost_jpy = 1e12; }, /大きすぎます/);
 rejects('内訳の合計が合わない', (d) => { d.services[0].breakdown.ドメイン = 100; }, /内訳の合計/);
+rejects('provisional が真偽値でない', (d) => { d.provisional = 'yes'; }, /true か false/);
 rejects('月の形が違う', (d) => { d.month = '2026-13'; }, /YYYY-MM/);
 rejects('月が無い', (d) => { delete d.month; }, /YYYY-MM/);
 rejects('実在しない期限', (d) => { d.services[0].keys.nearest_expiry = '2027-02-30'; }, /実在する日付/);

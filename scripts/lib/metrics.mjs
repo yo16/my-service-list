@@ -8,7 +8,7 @@
 export const MAX_AMOUNT_JPY = 100_000_000;
 
 const CATEGORY_RE = /^[a-z0-9][a-z0-9-]*$/;
-const TOP_KEYS = ['month', 'source', 'services', 'shared'];
+const TOP_KEYS = ['month', 'source', 'provisional', 'services', 'shared'];
 const SERVICE_KEYS = ['id', 'cost_jpy', 'revenue_jpy', 'breakdown', 'keys'];
 const KEYS_KEYS = ['count', 'nearest_expiry'];
 const SHARED_KEYS = ['provider', 'account', 'category', 'cost_jpy'];
@@ -76,8 +76,54 @@ function checkText(v, where, errors) {
 }
 
 /**
+ * service_monthly の 1 行から、取得元ごとの費用を取り出す。
+ * cost_sources の列ができる前に入った行は、source の列の名前の取得元が 1 つあるものとして読む。
+ *
+ * @returns {Record<string, { cost_jpy: number, breakdown: object|null, provisional: boolean, updated_at: string|null }>}
+ */
+export function sourcesOf(row) {
+  if (!row) return {};
+  if (isObject(row.cost_sources)) return { ...row.cost_sources };
+  if (row.cost_jpy > 0 || isObject(row.breakdown)) {
+    return { [row.source || 'import']: { cost_jpy: row.cost_jpy, breakdown: row.breakdown || null, provisional: false, updated_at: row.updated_at || null } };
+  }
+  return {};
+}
+
+/**
+ * すでにある月の行（無ければ null）に、取り込む 1 件（validatePayload の monthly_inputs の要素）を重ねて、書き込む行を作る。
+ * - 費用は、その取得元の分だけを置き換える。ほかの取得元の分は残す。月の費用は、取得元ごとの金額の合計にする
+ * - 収益は、書いてあれば置き換え、書いてなければ今の値を残す
+ * - 内訳は、金額のある取得元がすべて内訳を持つときだけ、名前ごとに足し合わせて持つ（合計が費用と一致する形を保つ）
+ */
+export function mergeMonthly(existing, input) {
+  const sources = sourcesOf(existing);
+  if (input.cost) sources[input.source] = { ...input.cost, updated_at: input.updated_at };
+  const entries = Object.values(sources);
+  const priced = entries.filter((e) => e.cost_jpy > 0);
+  let breakdown = null;
+  if (priced.length && priced.every((e) => isObject(e.breakdown))) {
+    breakdown = {};
+    for (const e of priced) {
+      for (const [name, amount] of Object.entries(e.breakdown)) breakdown[name] = (breakdown[name] || 0) + amount;
+    }
+  }
+  return {
+    service_id: input.service_id,
+    month: input.month,
+    cost_jpy: entries.reduce((sum, e) => sum + e.cost_jpy, 0),
+    revenue_jpy: input.revenue_jpy ?? (existing ? existing.revenue_jpy : 0),
+    breakdown,
+    source: input.source,
+    cost_sources: sources,
+    updated_at: input.updated_at,
+  };
+}
+
+/**
  * 取り込む JSON を検証し、表ごとの行に直す。
  * エラーが 1 つでもあれば rows は null。エラーはすべて集めて返す（1 つ目で止めない）。
+ * 費用と収益は、すでにある行に重ねる必要があるので、行ではなく monthly_inputs として返す（mergeMonthly に渡す）。
  *
  * @param {unknown} input 取り込む JSON
  * @param {{ serviceIds: Iterable<number>, categoryKeys?: Iterable<string>, now?: Date }} context
@@ -98,6 +144,10 @@ export function validatePayload(input, { serviceIds, categoryKeys = [], now = ne
 
   let source = 'import';
   if (has(input, 'source') && input.source !== null) source = checkText(input.source, 'source', errors) || source;
+
+  // 月が締まる前の、途中の金額か。確定した金額をもう一度取り込むと false に戻る
+  const provisional = has(input, 'provisional') ? input.provisional : false;
+  if (typeof provisional !== 'boolean') errors.push('provisional: true か false で書いてください');
 
   const services = has(input, 'services') ? input.services : [];
   const shared = has(input, 'shared') ? input.shared : [];
@@ -124,11 +174,12 @@ export function validatePayload(input, { serviceIds, categoryKeys = [], now = ne
     if (!hasMoney && !has(s, 'keys')) errors.push(`${where}: cost_jpy、revenue_jpy、keys のどれかを書いてください`);
 
     if (hasMoney) {
-      // 月の行は丸ごと置き換える。書かなかった金額は 0 として保存する
+      // 費用は、この取得元の分だけを置き換える。収益は、書いたときだけ置き換える
+      const hasCost = has(s, 'cost_jpy') || (has(s, 'breakdown') && s.breakdown !== null);
+      const hasRevenue = has(s, 'revenue_jpy');
       const cost = has(s, 'cost_jpy') ? s.cost_jpy : 0;
-      const revenue = has(s, 'revenue_jpy') ? s.revenue_jpy : 0;
-      const costOk = checkAmount(cost, `${where}.cost_jpy`, errors);
-      checkAmount(revenue, `${where}.revenue_jpy`, errors);
+      const costOk = hasCost ? checkAmount(cost, `${where}.cost_jpy`, errors) : true;
+      if (hasRevenue) checkAmount(s.revenue_jpy, `${where}.revenue_jpy`, errors);
       let breakdown = null;
       if (has(s, 'breakdown') && s.breakdown !== null) {
         if (!isObject(s.breakdown)) {
@@ -148,7 +199,14 @@ export function validatePayload(input, { serviceIds, categoryKeys = [], now = ne
           breakdown = s.breakdown;
         }
       }
-      monthly.push({ service_id: s.id, month, cost_jpy: cost, revenue_jpy: revenue, breakdown, source, updated_at: stamp });
+      monthly.push({
+        service_id: s.id,
+        month,
+        source,
+        cost: hasCost ? { cost_jpy: cost, breakdown, provisional: provisional === true } : null,
+        revenue_jpy: hasRevenue ? s.revenue_jpy : null,
+        updated_at: stamp,
+      });
     }
 
     if (has(s, 'keys')) {
@@ -197,7 +255,7 @@ export function validatePayload(input, { serviceIds, categoryKeys = [], now = ne
       if (seenShared.has(pair)) errors.push(`${where}: provider と account の同じ組が 2 回出てきます`);
       seenShared.add(pair);
     }
-    sharedRows.push({ month, provider, account, category, cost_jpy: c.cost_jpy, updated_at: stamp });
+    sharedRows.push({ month, provider, account, category, cost_jpy: c.cost_jpy, provisional: provisional === true, updated_at: stamp });
   });
 
   if (!errors.length && !monthly.length && !keys.length && !sharedRows.length) {
@@ -205,5 +263,5 @@ export function validatePayload(input, { serviceIds, categoryKeys = [], now = ne
   }
 
   if (errors.length) return { errors, rows: null };
-  return { errors: [], rows: { service_monthly: monthly, shared_monthly_costs: sharedRows, service_keys: keys } };
+  return { errors: [], rows: { monthly_inputs: monthly, shared_monthly_costs: sharedRows, service_keys: keys } };
 }

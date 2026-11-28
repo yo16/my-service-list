@@ -149,6 +149,19 @@ comment on table  public.service_keys is 'サービスが使う API キーの本
 comment on column public.service_keys.nearest_expiry is '期限のあるキーがなければ null';
 comment on column public.service_keys.checked_at is '台帳を確かめて取り込んだ日時';
 
+-- 取得元ごとの費用。あとから足した列なので、create table とは分けて書く。
+-- 取得元（取り込みの JSON の source）の名前から、その取得元の分への対応:
+--   { "cloud-a": { "cost_jpy": 1200, "breakdown": { "計算": 1200 }, "provisional": false, "updated_at": "..." } }
+-- cost_jpy は、取得元ごとの金額の合計のまま保つ。この列が null の行（列を足す前に入った行）は、
+-- source の列の名前の取得元が 1 つあるものとして読む（データの移し替えは要らない）。
+alter table public.service_monthly add column if not exists cost_sources jsonb;
+comment on column public.service_monthly.cost_sources is '取得元ごとの費用。取得元の名前から { cost_jpy, breakdown, provisional, updated_at } への対応。合計は cost_jpy と一致させる';
+comment on column public.service_monthly.source is '最後に書いた取得元（取り込みの JSON の source）';
+
+-- 月が締まる前の、途中の金額か
+alter table public.shared_monthly_costs add column if not exists provisional boolean not null default false;
+comment on column public.shared_monthly_costs.provisional is '月が締まる前の、途中の金額なら true';
+
 -- どの表も services と同じく、RLS を有効にしてポリシーは作らない
 alter table public.service_categories   enable row level security;
 alter table public.service_monthly      enable row level security;

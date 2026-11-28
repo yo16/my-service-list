@@ -20,7 +20,8 @@
 | `scripts/admin.mjs` | ローカルの登録画面のサーバー。Node 22 以上、依存ライブラリなし |
 | `admin/index.html` | 登録画面の HTML。`scripts/admin.mjs` が配信する。Pages には配置されない |
 | `scripts/import-metrics.mjs` | 費用、収益、キーの本数と期限の取り込み。JSON を検証して Supabase に入れる。Node 22 以上、依存ライブラリなし |
-| `scripts/lib/metrics.mjs` | 取り込む JSON の検証。テストは `scripts/lib/metrics.test.mjs`（`npm test`） |
+| `scripts/lib/metrics.mjs` | 取り込む JSON の検証と、取得元ごとの費用の重ね方。テストは `scripts/lib/metrics.test.mjs`（`npm test`） |
+| `scripts/lib/metrics-store.mjs` | 費用、収益、キーを Supabase に書く手順。取り込みと登録画面で共有する |
 | `scripts/check-variants.mjs` | 表記ゆれの点検。`npm run check:variants` で動かす。Node 22 以上、依存ライブラリなし |
 | `scripts/maintain-from-readme.mjs` | README からの登録情報のメンテナンス。`npm run maintain:readme` で動かす。Node 22 以上、依存ライブラリなし |
 | `scripts/lib/readme.mjs` | README から説明、技術タグ、インフラ、URL の候補を読む規則。テストは `scripts/lib/readme.test.mjs`（`npm test`） |
@@ -125,6 +126,8 @@ Secrets を登録するまで、同期ジョブは失敗にならず何もせず
 サービスごとの月の費用と収益、サービスに分けられない共通の費用、API キーの本数といちばん近い期限を、1 か月分の JSON ファイルから Supabase に入れる。`.env` は登録画面と同じものを使う。JSON の形は [docs/design.md](docs/design.md) の 3.6 にある。このリポジトリは公開なので、本物の金額を書いた JSON ファイルはリポジトリの外に置く。
 
 誤りがあれば、何も書き込まずにエラーで止まる。同じ月を何度取り込んでも、同じ行を上書きするだけになる。
+
+費用は取得元（JSON の `source`）ごとに持つ。`source` を変えれば、同じサービスの同じ月を別々のファイルで取り込めて、月の費用はその合計になる。同じ `source` をもう一度取り込むと、その取得元の分だけが置き換わる。月が締まる前の金額は、JSON に `"provisional": true` を書くと、一覧に「暫定」と出る。
 
 1. その月の JSON ファイルを、リポジトリの外に作る。
 2. リポジトリのフォルダで次を実行し、検証だけを行う（書き込まない）。`<ファイル>` は 1 で作ったファイルの場所に置き換える。

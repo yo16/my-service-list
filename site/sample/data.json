@@ -59,7 +59,28 @@
           "breakdown": {
             "ホスティング": 1980,
             "ドメイン": 500
-          }
+          },
+          "sources": [
+            {
+              "source": "manual",
+              "costJpy": 500,
+              "breakdown": {
+                "ドメイン": 500
+              },
+              "provisional": false,
+              "updatedAt": "2026-11-01T03:00:00Z"
+            },
+            {
+              "source": "sample-cloud",
+              "costJpy": 1980,
+              "breakdown": {
+                "ホスティング": 1980
+              },
+              "provisional": true,
+              "updatedAt": "2026-11-02T03:00:00Z"
+            }
+          ],
+          "provisional": true
         },
         "previous": {
           "costJpy": 2480,
@@ -283,7 +304,8 @@
       "provider": "Sample DB",
       "account": "個人の組織",
       "category": null,
-      "costJpy": 3800
+      "costJpy": 3800,
+      "provisional": true
     },
     {
       "month": "2026-10",

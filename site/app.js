@@ -151,6 +151,13 @@
   };
   const sharedOf = (month = state.month) => (state.data.sharedCosts || []).filter((c) => c.month === monthName(month));
 
+  // 費用の取得元の表示名。決まった名前以外は、取り込みの JSON の source をそのまま出す
+  const SOURCE_LABEL = { manual: '手入力', import: '取り込み' };
+  const sourceLabel = (key) => SOURCE_LABEL[key] || key;
+  // 月が締まる前の、途中の金額に付ける印
+  const provisionalFlag = () => el('span', { class: 'provisional-flag', text: '暫定', title: '月が締まる前の、途中の金額です' });
+  const breakdownText = (b) => (b ? Object.entries(b).map(([name, v]) => `${name} ${yen(v)}`).join('、') : null);
+
   // キーのいちばん近い期限の状態: expired（過ぎた）、soon（30 日以内）、ok、null（期限なし）
   function expiryOf(s) {
     const days = s.keys ? daysUntil(s.keys.nearestExpiry) : null;
@@ -372,8 +379,9 @@
     figure('収益の合計', shown(yen(revenue)), 'is-main');
     figure('差し引き', shown(signedYen(net)), `is-main ${hasAny ? netClass(net) : ''}`);
 
+    const provisional = entered.some((s) => moneyOf(s).provisional) || sharedOf().some((c) => c.provisional);
     $('#summary-note').textContent = hasAny
-      ? `${monthName(state.month)} の分。サービス ${services.length} 件のうち ${entered.length} 件に金額が入っています。上の合計は絞り込みに連動しません。`
+      ? `${monthName(state.month)} の分。サービス ${services.length} 件のうち ${entered.length} 件に金額が入っています。上の合計は絞り込みに連動しません。${provisional ? '月が締まる前の、暫定の金額を含みます。' : ''}`
       : `${monthName(state.month)} の金額は、まだ入っていません。`;
   }
 
@@ -414,7 +422,7 @@
     empty.textContent = `${monthName(state.month)} の共通の費用は、まだ入っていません。`;
     for (const c of rows) {
       body.append(el('tr', {}, [
-        el('td', { text: c.provider }),
+        el('td', {}, [c.provider, c.provisional ? provisionalFlag() : null]),
         el('td', { text: c.account }),
         el('td', {}, c.category ? categoryLabel(c.category) : el('span', { class: 'none', text: '—' })),
         el('td', { class: 'num', text: yen(c.costJpy) }),
@@ -734,7 +742,7 @@
     const money = moneyOf(s);
     const net = netOf(s);
     tr.append(el('td', { class: 'money metric' }, money
-      ? [amount('費用', yen(money.costJpy)), amount('収益', yen(money.revenueJpy))]
+      ? [amount('費用', yen(money.costJpy)), amount('収益', yen(money.revenueJpy)), money.provisional ? provisionalFlag() : null]
       : [el('span', { class: 'amt-label', text: '費用' }), none()]));
     tr.append(el('td', { class: 'net metric' }, net != null
       ? amount('差し引き', signedYen(net), netClass(net))
@@ -819,15 +827,27 @@
         return m ? `費用 ${yen(m.costJpy)} ・ 収益 ${yen(m.revenueJpy)} ・ 差し引き ${signedYen(netOf(s, key))}` : '未入力';
       };
       const shown = moneyOf(s);
-      const breakdown = shown && shown.breakdown
-        ? Object.entries(shown.breakdown).map(([name, v]) => `${name} ${yen(v)}`).join('、')
-        : null;
+      // 取得元ごとの費用があれば、取得元ごとに 1 行で出す（金額、内訳、取り込んだ日、暫定の印）。無ければ月の内訳だけ
+      const sources = shown && Array.isArray(shown.sources) && shown.sources.length ? shown.sources : null;
+      const breakdown = sources
+        ? el('ul', { class: 'cost-sources' }, sources.map((e) => {
+          const detail = breakdownText(e.breakdown);
+          const when = fmtDate(e.updatedAt);
+          return el('li', {}, [
+            el('span', { class: 'source-name', text: sourceLabel(e.source) }),
+            ` ${yen(e.costJpy)}`,
+            detail ? `（${detail}）` : null,
+            when ? el('span', { class: 'source-when', text: ` ${when} に取り込み` }) : null,
+            e.provisional ? provisionalFlag() : null,
+          ]);
+        }))
+        : breakdownText(shown && shown.breakdown);
       const exp = expiryOf(s);
       const k = s.keys;
       grid.append(dl([
         [`今月（${monthName('current') || '—'}）`, monthLine('current')],
         [`先月（${monthName('previous') || '—'}）`, monthLine('previous')],
-        [`費用の内訳（${monthName(state.month) || '—'}）`, breakdown],
+        [`費用の${sources ? '取得元' : '内訳'}（${monthName(state.month) || '—'}）`, breakdown],
         ['キー', k ? `${k.count} 本` : '未入力'],
         ['いちばん近い期限', k ? el('span', {}, [k.nearestExpiry || 'なし', expiryFlag(exp)]) : null],
         ['キーを確かめた日', k ? fmtDate(k.checkedAt) : null],

@@ -173,20 +173,28 @@ UptimeRobot API v3（`GET https://api.uptimerobot.com/v3/monitors?limit=200`、B
     {
       "category": "personal",
       "money": {
-        "current": { "costJpy": 1350, "revenueJpy": 0, "breakdown": { "クラウド": 1200, "ドメイン": 150 } },
+        "current": {
+          "costJpy": 1350, "revenueJpy": 0, "breakdown": { "クラウド": 1200, "ドメイン": 150 },
+          "sources": [
+            { "source": "manual", "costJpy": 150, "breakdown": { "ドメイン": 150 }, "provisional": false, "updatedAt": "2026-11-01T03:00:00Z" },
+            { "source": "sample-cloud", "costJpy": 1200, "breakdown": { "クラウド": 1200 }, "provisional": true, "updatedAt": "2026-11-20T03:00:00Z" }
+          ],
+          "provisional": true
+        },
         "previous": null
       },
       "keys": { "count": 4, "nearestExpiry": "2027-02-01", "checkedAt": "2026-11-20T03:00:00Z" }
     }
   ],
   "sharedCosts": [
-    { "month": "2026-11", "provider": "Sample Hosting", "account": "サンプルのチーム", "category": null, "costJpy": 3000 }
+    { "month": "2026-11", "provider": "Sample Hosting", "account": "サンプルのチーム", "category": null, "costJpy": 3000, "provisional": false }
   ]
 }
 ```
 
 - `months` は同期した時点の今月と先月（日本時間）。`money` と `sharedCosts` に入るのは、この 2 か月分だけ。
 - `money.current` と `money.previous` は、その月の行が無ければ `null`。0 円と未入力を区別する。
+- `sources` は取得元ごとの費用で、合計は `costJpy` と一致する。`provisional` は、月が締まる前の途中の金額を含むときに `true`。`service_monthly.cost_sources` と `shared_monthly_costs.provisional` の列がまだ無いときは、これらの項目を出さない。
 - `keys` は、そのサービスの行が無ければ `null`。`nearestExpiry` は、期限のあるキーが無ければ `null`。
 - `sharedCosts` はサービスに割り振らない費用で、`services` の外に置く。
 
@@ -213,14 +221,19 @@ UptimeRobot API v3（`GET https://api.uptimerobot.com/v3/monitors?limit=200`、B
 | 表 | 1 行の単位 | 列 | 書く人 |
 |---|---|---|---|
 | `service_categories` | 区分 | `key`（英小文字、数字、ハイフン）、`label`（表示名）、`sort_order`（並べる順） | SQL Editor で人が直す |
-| `service_monthly` | 1 サービスの 1 か月 | `service_id`、`month`（月の 1 日）、`cost_jpy`、`revenue_jpy`、`breakdown`（費用の内訳。名前から金額への対応）、`source`、`updated_at` | 取り込みのスクリプト |
-| `shared_monthly_costs` | 1 か月の、請求元と請求の単位の組 | `month`、`provider`（請求元）、`account`（請求の単位）、`category`（区分に寄せられるときだけ）、`cost_jpy`、`updated_at` | 取り込みのスクリプト |
+| `service_monthly` | 1 サービスの 1 か月 | `service_id`、`month`（月の 1 日）、`cost_jpy`（取得元ごとの金額の合計）、`revenue_jpy`、`breakdown`（費用の内訳。名前から金額への対応）、`cost_sources`（取得元ごとの費用）、`source`（最後に書いた取得元）、`updated_at` | 取り込みのスクリプト |
+| `shared_monthly_costs` | 1 か月の、請求元と請求の単位の組 | `month`、`provider`（請求元）、`account`（請求の単位）、`category`（区分に寄せられるときだけ）、`cost_jpy`、`provisional`（途中の金額か）、`updated_at` | 取り込みのスクリプト |
 | `service_keys` | 1 サービス | `service_id`、`key_count`、`nearest_expiry`、`checked_at` | 取り込みのスクリプト |
 
 設計上の判断:
 
 - **金額は円の整数。** 外貨の請求は、取り込む側で円に直す。負の値は入れられない。
 - **差し引きは保存しない。** 収益から費用を引いて、表示のときに計算する。
+- **費用は取得元ごとに持つ。** 請求元ごとに別の集め役が取り込んでも互いの分を消さないよう、`cost_sources` に、取得元の名前から `{ cost_jpy, breakdown, provisional, updated_at }` への対応を持つ。同じ取得元をもう一度取り込むと、その取得元の分だけが置き換わる。`cost_jpy` はその合計のまま保つので、合計だけを読む側は変えなくてよい。表を分けずに 1 行の中に持つのは、合計と内訳を 1 回の書き込みでそろえるため。
+- **列を足す前の行は、そのまま読む。** `cost_sources` が null の行は、`source` の名前の取得元が 1 つあるものとして扱う。データの移し替えはしない。
+- **月の内訳は、そろうときだけ持つ。** `breakdown` は、金額のある取得元がすべて内訳を持つときに、名前ごとに足し合わせて入れる。そうでなければ null にし、画面は取得元ごとの内訳を出す。
+- **途中の金額には印を付ける。** 月が締まる前に取り込んだ金額は `provisional` を true にし、画面で「暫定」と出す。確定した金額を取り込み直すと外れる。
+- **収益は取得元に分けない。** 月に 1 つの値で持つ。収益を書かない取り込みでは、今の値を残す。
 - **サービスに分けられない費用は割り振らない。** 組織やチームの単位で請求されるものは `shared_monthly_costs` に置き、画面では「共通の費用」として別に並べる。等分するとサービスごとの差し引きが実態とずれるため。
 - **キーは本数と期限だけ。** キーの名前、置き場所、権限は持たない。取り込みの JSON に余分な項目があると、検証でエラーにする。
 - **区分の一覧はコードに書かない。** 画面は `service_categories` から読む。区分を足すときや表示名を変えるときは、この表を直せばよい。
@@ -235,6 +248,7 @@ UptimeRobot API v3（`GET https://api.uptimerobot.com/v3/monitors?limit=200`、B
 {
   "month": "2026-11",
   "source": "manual",
+  "provisional": false,
   "services": [
     {
       "id": 3,
@@ -254,10 +268,12 @@ UptimeRobot API v3（`GET https://api.uptimerobot.com/v3/monitors?limit=200`、B
 | 項目 | 必須 | 規則 |
 |---|---|---|
 | `month` | ○ | `YYYY-MM` |
-| `source` | | 値の出どころを示す短い文字列。省くと `import` |
+| `source` | | 費用の取得元を示す短い文字列（請求元の名前など）。省くと `import`。登録画面のフォームは `manual` を使う |
+| `provisional` | | 月が締まる前の、途中の金額なら `true`。省くと `false`。このファイルの費用と共通の費用のすべてに付く |
 | `services[].id` | ○ | 登録済みの通し番号。同じ番号は 1 回だけ |
-| `services[].cost_jpy`、`revenue_jpy` | | 0 以上の円の整数（上限は 1 億円）。どちらかを書くと、その月の行を丸ごと置き換える。書かなかったほうは 0 になる |
-| `services[].breakdown` | | 名前から金額への対応。合計は `cost_jpy` と一致させる |
+| `services[].cost_jpy` | | 0 以上の円の整数（上限は 1 億円）。この取得元の、その月の費用を置き換える。ほかの取得元の費用は残る。書かなければ、費用には触れない |
+| `services[].revenue_jpy` | | 0 以上の円の整数。その月の収益を置き換える。書かなければ、今の値を残す |
+| `services[].breakdown` | | この取得元の費用の内訳。名前から金額への対応。合計は `cost_jpy` と一致させる |
 | `services[].keys.count` | `keys` を書くなら ○ | 0 以上の整数 |
 | `services[].keys.nearest_expiry` | | `YYYY-MM-DD` か `null`。期限のあるキーが無ければ `null` |
 | `shared[].provider`、`account` | ○ | 空でない文字列（100 文字以内）。同じ組は 1 回だけ |
@@ -267,7 +283,9 @@ UptimeRobot API v3（`GET https://api.uptimerobot.com/v3/monitors?limit=200`、B
 - サービスの 1 件には、金額（`cost_jpy`、`revenue_jpy`、`breakdown`）か `keys` のどちらかが要る。キーだけ、金額だけでもよい。
 - 上の表に無い項目があるとエラーにする（書き間違いと、キーの詳細の混入を止めるため）。
 - エラーが 1 つでもあれば、何も書き込まない。エラーは 1 つ目で止めず、すべて出す。
-- 同じ月を何度取り込んでも、同じ行を上書きするだけになる。行を消す機能はない。共通の費用を取り消すときは `cost_jpy` を 0 にして取り込む。
+- 同じ月を何度取り込んでも、同じ行を上書きするだけになる。行を消す機能はない。共通の費用や、ある取得元の費用を取り消すときは、`cost_jpy` を 0 にして取り込む。
+- `source` と `provisional` を書かない、今までの形の JSON も、そのまま取り込める。今までと違うのは、費用だけを書いたときに収益を 0 に戻さなくなった点だけである。
+- 取得元が違えば、同じサービスの同じ月を別々のファイルで取り込める。月の費用は、取得元ごとの金額の合計になる。
 
 ## 4. 同期ジョブ
 
@@ -350,11 +368,12 @@ UptimeRobot API v3（`GET https://api.uptimerobot.com/v3/monitors?limit=200`、B
 - **費用と収益の合計**: 表の上に、選んでいる月の費用の合計（うちサービスごと、うち共通）、収益の合計、差し引きを出す。月は「今月」と「先月」のボタンで切り替え、表の金額と「共通の費用」も同じ月に変わる。今月の分がまだ無く先月の分があるときは、先月から始める。合計は絞り込みに連動させない（既定で隠している「終了」の費用も含めるため）。絞り込んでいるときは、その下に、表に出ているサービスの分の費用、収益、差し引きを 1 行で足す（共通の費用は含めない）。何も入っていない月は、0 円と区別するために「—」を出す。月を切り替えても、キーボードのフォーカスは押したボタンに残す。
 - **表の列**（12 列）: 番号、死活の点、サービス名（下に説明を小さく 1 行）、段階のバッジ（下に区分）、インフラ（1 行に 1 つ）、技術タグ（3 つまで表示し、残りは「+n」）、費用と収益（2 行）、差し引き、キー（本数、いちばん近い期限）、公開日、最終更新（相対表示、ホバーで日時）、リンク 2 つ（サイト、リポジトリ）。金額が未入力の月は「—」にし、0 円と区別する。
 - **差し引き**: 正は緑、負は赤にし、色だけに頼らないよう符号（+ と −）も付ける。
+- **暫定の印**: 月が締まる前の途中の金額を含むサービスと共通の費用には「暫定」と出し、合計の下の注記にも書く。
 - **キーの期限**: いちばん近い期限が 30 日以内なら「あと n 日」、過ぎていれば「期限切れ」の印を出す。該当するサービスの数を、ヘッダーにも「キーの期限が近い n」と出す。日数は端末の日付で数える。
 - **共通の費用**: 表の下に、選んでいる月の分を、請求元、請求の単位、区分、費用の表で出し、合計を付ける。
 - **費用や期限が出力に無いとき**（3.5 の表を作る前）: 合計、費用、差し引き、キーの列、「共通の費用」を出さず、今までどおりの表にする。
 - **死活の点**: UP は緑の丸、DOWN と LOOKS_DOWN は外周つきの赤い丸、PAUSED と STARTED は灰の四角、未監視は灰の輪。ホバーで状態、24 時間の稼働率、最後の障害を出す。停止の行は左端に赤い線を引き、名前の横に「停止」と文字でも出す。
-- **行の展開**: 行をクリックすると下に 1 段開き、説明の全文、note、最新リリース、アーカイブ済みの印、UptimeRobot の数値、今月と先月の費用と収益、費用の内訳、キーを確かめた日を出す。別ページは作らない。開閉しても、キーボードのフォーカスは名前のボタンに残す。
+- **行の展開**: 行をクリックすると下に 1 段開き、説明の全文、note、最新リリース、アーカイブ済みの印、UptimeRobot の数値、今月と先月の費用と収益、選んでいる月の費用の取得元ごとの金額と内訳と取り込んだ日（取得元ごとの費用が出力に無ければ、月の内訳だけ）、キーを確かめた日を出す。取得元の名前は、`manual` を「手入力」、`import` を「取り込み」と出し、ほかはそのまま出す。別ページは作らない。開閉しても、キーボードのフォーカスは名前のボタンに残す。
 - **並べ替え**: 番号、費用、差し引き、キーの期限、公開日、最終更新の見出しをクリックで切り替える。既定は番号の昇順。キーの期限は近い順から始める。値のない行は常に最後にする。状態は `aria-sort` でも伝える。見出しはスクロールしても画面上部に残す。
 - **段階ごとの見た目**: 終了は名前とタグを薄くする（文字のコントラストは保つので、行全体の透明度は下げない）。休止はバッジだけ琥珀色にする。
 - **幅が足りないとき（860〜1359px）**: 表のまま列を減らす。1360px 未満で公開日と技術、1120px 未満でインフラ、960px 未満で最終更新を隠す。費用、差し引き、キーは最後まで残す。隠した列は行を展開すると見られる。
@@ -387,7 +406,8 @@ UptimeRobot API v3（`GET https://api.uptimerobot.com/v3/monitors?limit=200`、B
 
 - 起動: `node scripts/import-metrics.mjs <ファイル.json>`。画面は持たず、結果を端末に出す。Node 22 以上の標準機能だけで動き、npm の依存はない。
 - 設定: 登録画面と同じく、リポジトリ直下の `.env` から `SUPABASE_URL` と `SUPABASE_SERVICE_ROLE_KEY` を読む。新しい鍵は要らない。
-- 手順: ファイルを読む → Supabase から登録済みの通し番号と区分を読む → 3.6 の規則で検証する → `service_monthly`、`shared_monthly_costs`、`service_keys` の順に upsert する。検証の規則は `scripts/lib/metrics.mjs` にあり、`npm test` で確かめられる。
+- 手順: ファイルを読む → Supabase から登録済みの通し番号と区分を読む → 3.6 の規則で検証する → `service_monthly`、`shared_monthly_costs`、`service_keys` の順に upsert する。`service_monthly` は、その月の今の行を読み、この取得元の分を重ねてから書く。検証と重ね方の規則は `scripts/lib/metrics.mjs`、書く手順は `scripts/lib/metrics-store.mjs` にあり、`npm test` で確かめられる。
+- `cost_sources` や `provisional` の列がまだ無いときは、`supabase/schema.sql` の実行を促すエラーで止まる。
 - `--dry-run` を付けると、検証と、書き込む予定の行数の表示だけを行う。このときも通し番号と区分を確かめるために Supabase を読む（読むだけ）。
 - 検証でエラーがあれば、何も書き込まずに終了コード 1 で止まる。
 - 3 つの表への書き込みは 1 つの取引にはなっていない。途中で失敗したときは、どの表まで書いたかを出す。原因を直して同じファイルをもう一度取り込めば、同じ行が上書きされてそろう。
