@@ -594,6 +594,33 @@
         renderRows();
       });
     }
+    // PDF への出力は、ブラウザの印刷に任せる（印刷の画面で「PDF に保存」を選ぶ）。外部のライブラリは足さない。
+    // 印刷のあいだだけ、配色をライトにし、保存するファイルの名前になるタイトルに日付を付ける
+    let titleBeforePrint = null;
+    let themeBeforePrint = null;
+    window.addEventListener('beforeprint', () => {
+      if (titleBeforePrint !== null) return;
+      titleBeforePrint = document.title;
+      themeBeforePrint = document.documentElement.getAttribute('data-theme');
+      const d = new Date();
+      document.title = `my-services-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      document.documentElement.setAttribute('data-theme', 'light');
+      // グラフの値を紙でも読めるよう、「表で見る」の表を開いて出す
+      const details = $('.viz-table-details');
+      details.dataset.openBeforePrint = details.open ? '1' : '';
+      details.open = true;
+    });
+    window.addEventListener('afterprint', () => {
+      if (titleBeforePrint === null) return;
+      document.title = titleBeforePrint;
+      if (themeBeforePrint === null) document.documentElement.removeAttribute('data-theme');
+      else document.documentElement.setAttribute('data-theme', themeBeforePrint);
+      titleBeforePrint = null;
+      $('.viz-table-details').open = Boolean($('.viz-table-details').dataset.openBeforePrint);
+      // 紙の幅で描いたグラフを、画面の幅で描き直す
+      for (const host of document.querySelectorAll('.viz')) if (host.vizRedraw) host.vizRedraw();
+    });
+    $('#print').addEventListener('click', () => window.print());
     $('#lock').addEventListener('click', () => {
       storage('del');
       location.reload();

@@ -654,7 +654,15 @@ tr.detail .note { margin: 0 0 10px; white-space: pre-wrap; }
   }
 }
 
-.view-switch { margin: 4px 0 14px; }
+.top-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin: 4px 0 14px;
+}
+.top-row #print { margin-left: auto; }
 
 .viz { position: relative; margin-top: 8px; }
 .viz-svg { display: block; overflow: visible; }
@@ -862,4 +870,52 @@ tr.detail .note { margin: 0 0 10px; white-space: pre-wrap; }
 
 @media (prefers-reduced-motion: reduce) {
   .toggle, .chip { transition: none; }
+}
+
+/* ---------- 印刷（PDF への出力） ----------
+ * A4 の横置きに、表のまま全部の列を出す。操作のための部品（絞り込み、切り替え、リンク）は出さない。
+ * 配色は、印刷のあいだだけ app.js がライトに切り替える。
+ */
+
+@page { size: A4 landscape; margin: 10mm; }
+
+@media print {
+  html { font-size: 11px; }
+  body { background: #fff; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  .wrap { max-width: none; padding: 0; }
+  .site-header { padding: 0 0 8px; }
+  .top-row, .filters, #month-switch, #lock, .banner, #summary-filtered, #legend-site, #legend-repo,
+  .viz-tip, .viz-table-details > summary, .month-select, button.sort::after { display: none !important; }
+  /* リンクの列は幅を 0 にして畳む。列ごと消すと、行を展開した段（12 列ぶんの結合）の幅が 1 列ずれる */
+  table.services .col-links { width: 0 !important; padding: 0 !important; }
+  table.services td.links { padding: 0 !important; }
+  table.services td.links > * { display: none !important; }
+  .summary, .table-wrap, .shared-wrap { box-shadow: none; }
+  .table-wrap { overflow: visible; }
+
+  /* 画面の幅で隠している列も、紙にはすべて出す */
+  .col-released, td.released, .col-tags, td.tags-cell,
+  .col-infra, td.infra-cell, .col-pushed, td.pushed { display: table-cell !important; }
+  .col-id { width: 46px; }
+  .col-up { width: 22px; }
+  .col-stage { width: 84px; }
+  .col-infra { width: 108px; }
+  .col-tags { width: 96px; }
+  .col-money { width: 100px; }
+  .col-net { width: 78px; }
+  .col-keys { width: 96px; }
+  .col-date { width: 76px; }
+
+  table.services thead { display: table-header-group; } /* ページが変わるたびに、見出しを繰り返す */
+  table.services thead th { position: static; box-shadow: none; padding: 6px 8px; }
+  tbody td { padding: 6px 8px; }
+  tr.row, tr.detail, .shared-table tr, .summary { break-inside: avoid; }
+  tr.row { cursor: auto; }
+  tr.detail td { padding: 8px 8px 10px 76px; }
+  button.name::before { content: none; }
+  .desc { white-space: normal; }
+  .shared { break-inside: avoid; }
+  .legend { margin-bottom: 0; }
 }
