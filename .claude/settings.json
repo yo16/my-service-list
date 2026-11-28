@@ -7,6 +7,11 @@
           {
             "type": "command",
             "command": "bd prime --hook-json --memories-only"
+          },
+          {
+            "type": "command",
+            "command": "node scripts/sync-github-issues.mjs",
+            "timeout": 60
           }
         ]
       }

@@ -21,6 +21,7 @@
 ### フック
 
 - SessionStart: `bd prime --hook-json --memories-only`（`.claude/settings.json`）。`bd remember` で残した知見だけを読み込む。
+- SessionStart: `node scripts/sync-github-issues.mjs`（`.claude/settings.json`）。GitHub の open な Issue を調べ、beads にまだ無いものを登録する。登録済みかどうかは beads の external_ref（`gh-<番号>`）で見分ける。GitHub の側は書き換えない。
 
 ### サブエージェント
 
