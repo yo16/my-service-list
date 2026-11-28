@@ -99,6 +99,19 @@ export function sourcesOf(row) {
 export function mergeMonthly(existing, input) {
   const sources = sourcesOf(existing);
   if (input.cost) sources[input.source] = { ...input.cost, updated_at: input.updated_at };
+  return {
+    service_id: input.service_id,
+    month: input.month,
+    ...totalsOf(sources),
+    revenue_jpy: input.revenue_jpy ?? (existing ? existing.revenue_jpy : 0),
+    source: input.source,
+    cost_sources: sources,
+    updated_at: input.updated_at,
+  };
+}
+
+/** 取得元ごとの費用から、月の費用（合計）と月の内訳を作る */
+function totalsOf(sources) {
   const entries = Object.values(sources);
   const priced = entries.filter((e) => e.cost_jpy > 0);
   let breakdown = null;
@@ -108,15 +121,40 @@ export function mergeMonthly(existing, input) {
       for (const [name, amount] of Object.entries(e.breakdown)) breakdown[name] = (breakdown[name] || 0) + amount;
     }
   }
+  return { cost_jpy: entries.reduce((sum, e) => sum + e.cost_jpy, 0), breakdown };
+}
+
+/** 取得元の名前として使えなければ、理由の文を返す。使えれば null */
+export function sourceNameError(v) {
+  const errors = [];
+  checkText(v, '取得元の名前', errors);
+  return errors[0] || null;
+}
+
+/**
+ * 月の行の、取得元 1 つの名前を付け替えるか、取得元 1 つを消して、書き込む行を作る。
+ * 金額、内訳、暫定の印、取り込んだ日時は変えない。月の費用と月の内訳は、残った取得元から作り直す。収益には触れない。
+ * その取得元が行に無ければ null を返す。付け替え先の名前がすでに行にあるかどうかは、呼び出し側が先に確かめる。
+ *
+ * @param {object} existing service_monthly の今の行
+ * @param {{ action: 'rename'|'remove', source: string, to?: string, updated_at: string }} edit
+ */
+export function editSource(existing, { action, source, to, updated_at }) {
+  const current = sourcesOf(existing);
+  if (!has(current, source)) return null;
+  const sources = {};
+  for (const [name, entry] of Object.entries(current)) {
+    if (name !== source) sources[name] = entry;
+    else if (action === 'rename') sources[to] = entry; // 並びの位置を保つ
+  }
   return {
-    service_id: input.service_id,
-    month: input.month,
-    cost_jpy: entries.reduce((sum, e) => sum + e.cost_jpy, 0),
-    revenue_jpy: input.revenue_jpy ?? (existing ? existing.revenue_jpy : 0),
-    breakdown,
-    source: input.source,
+    service_id: existing.service_id,
+    month: existing.month,
+    ...totalsOf(sources),
+    revenue_jpy: existing.revenue_jpy,
+    source: action === 'rename' && existing.source === source ? to : existing.source,
     cost_sources: sources,
-    updated_at: input.updated_at,
+    updated_at,
   };
 }
 

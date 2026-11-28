@@ -73,8 +73,10 @@
     .card h3 { margin: 22px 0 6px; font-size: 1rem; }
     .money-table td { vertical-align: middle; }
     .money-table td.num-cell { width: 130px; }
-    .money-table td.source { font-size: 0.87rem; white-space: nowrap; }
-    .money-table td.source .when { display: block; font-size: 0.8rem; color: var(--muted); }
+    /* 取り込んだときの長い説明文が名前になっていることがあるので、表の幅を押し広げないよう折り返す */
+    .money-table td.source { font-size: 0.87rem; overflow-wrap: anywhere; min-width: 150px; max-width: 260px; }
+    .money-table td.source .flag { white-space: nowrap; }
+    .money-table td.source .when { display: block; font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
     .money-table tr.first-of-service td { border-top: 1px solid var(--border); }
     .money-table tbody td { border-bottom: 0; }
     .cell-input, .cell-select {
@@ -91,7 +93,8 @@
     label.check { display: flex; align-items: center; gap: 8px; font-size: 0.87rem; }
     .error-list { margin: 10px 0 0; padding-left: 1.4em; color: var(--down); font-size: 0.87rem; }
     .error-list:empty { display: none; }
-    @media (max-width: 719px) {
+    .source-tools { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 10px 0; }
+    .source-tools .cell-select, .source-tools .cell-input { flex: 1 1 240px; width: auto; max-width: 420px; }    @media (max-width: 719px) {
       .cell-input, .cell-select, #m-month { font-size: 16px; }
       .money-table td.num-cell { width: 110px; }
     }
@@ -243,6 +246,19 @@
           </div>
           <ul id="money-errors" class="error-list" role="alert"></ul>
         </form>
+
+        <!-- 保存するボタンとは別に、押したときにすぐ書き込む。フォームの外に置く -->
+        <div id="source-tools" hidden>
+          <h3 id="source-tools-title">取得元の整理</h3>
+          <p class="hint">選んだ月の、取得元 1 つの名前を付け替えるか、取得元 1 つを消します。その取得元の費用が入っているすべてのサービスに、押したときにすぐ書き込みます。付け替えでは、金額は変わりません。消すと、その取得元の金額が月の費用から引かれます。</p>
+          <div class="source-tools" role="group" aria-labelledby="source-tools-title">
+            <select id="source-pick" class="cell-select" aria-label="取得元"></select>
+            <input id="source-new-name" class="cell-input" type="text" maxlength="100" autocomplete="off" aria-label="新しい名前" placeholder="新しい名前（例: gcp）">
+            <button type="button" class="secondary" id="source-rename">名前を付け替える</button>
+            <button type="button" class="secondary" id="source-remove">この取得元を消す</button>
+          </div>
+          <p id="source-msg" class="msg" role="status"></p>
+        </div>
       </section>
     </div>
   </main>
@@ -696,7 +712,53 @@
       const revenue = data.services.reduce((sum, s) => sum + (s.revenue_jpy || 0), 0);
       const sharedCost = data.shared.reduce((sum, c) => sum + c.cost_jpy, 0);
       $('#money-total').textContent = `${data.month} に入っている金額: サービスごとの費用 ${yen(cost)}、共通の費用 ${yen(sharedCost)}、収益 ${yen(revenue)}、差し引き ${yen(revenue - cost - sharedCost).replace('¥-', '−¥')}`;
+      renderSourceTools(data);
     }
+
+    // 取得元の整理。その月に入っている取得元を、費用の入っているサービスの数と一緒に選択欄に出す
+    function renderSourceTools(data) {
+      const counts = new Map();
+      for (const s of data.services) for (const x of s.sources) counts.set(x.source, (counts.get(x.source) || 0) + 1);
+      const names = [...counts.keys()].sort((a, b) => a.localeCompare(b));
+      $('#source-pick').replaceChildren(...names.map((n) => el('option', { value: n, text: `${sourceLabel(n)}（${counts.get(n)} 件のサービス）` })));
+      $('#source-new-name').value = '';
+      $('#source-tools').hidden = !names.length;
+    }
+
+    async function editSource(action) {
+      const msg = $('#source-msg');
+      const source = $('#source-pick').value;
+      const to = $('#source-new-name').value.trim();
+      if (!source) return;
+      if (action === 'rename' && !to) {
+        setMsg(msg, '新しい名前を入れてください', 'err');
+        $('#source-new-name').focus();
+        return;
+      }
+      const dirty = moneyDirty() ? '上の表の、保存していない入力は破棄されます。' : '';
+      const question = action === 'remove'
+        ? `${money.month} の取得元「${sourceLabel(source)}」の費用を、すべてのサービスから消します。元には戻せません。${dirty}消しますか？`
+        : `${dirty}取得元「${sourceLabel(source)}」の名前を「${to}」に付け替えますか？`;
+      if ((action === 'remove' || dirty) && !window.confirm(question)) return;
+      const buttons = [$('#source-rename'), $('#source-remove')];
+      buttons.forEach((b) => { b.disabled = true; });
+      setMsg(msg, '書き込んでいます…');
+      try {
+        const done = await api('POST', '/api/metrics/sources', { month: money.month, action, source, to });
+        setMsg($('#money-msg'), '');
+        const reloaded = await loadMoney(money.month);
+        const what = action === 'remove'
+          ? `取得元「${sourceLabel(source)}」を消しました（${done.service_monthly} 件のサービス、合わせて ${yen(done.cost_jpy)}）`
+          : `取得元「${sourceLabel(source)}」の名前を「${sourceLabel(to)}」に付け替えました（${done.service_monthly} 件のサービス）`;
+        setMsg(msg, `${money.month}: ${what}。${reloaded ? '一覧ページに出すには「一覧ページに反映する」を押してください。' : '書き込みは済んでいます。月を選び直すと、今の金額が出ます。'}`, 'ok');
+      } catch (err) {
+        setMsg(msg, err.message, 'err');
+      } finally {
+        buttons.forEach((b) => { b.disabled = false; });
+      }
+    }
+    $('#source-rename').addEventListener('click', () => editSource('rename'));
+    $('#source-remove').addEventListener('click', () => editSource('remove'));
 
     const moneyDirty = () => [...document.querySelectorAll('#money-form .cell-input, #money-form .cell-select')].some(isChanged) || $('#m-provisional').checked;
 
@@ -714,6 +776,7 @@
         money.loaded = !data.unavailable;
         $('#m-provisional').checked = false;
         if (money.loaded) renderMoney(data);
+        else $('#source-tools').hidden = true;
         return true;
       } catch (err) {
         setMsg(msg, `読み込めません: ${err.message}`, 'err');
@@ -729,6 +792,7 @@
         return;
       }
       setMsg($('#money-msg'), '');
+      setMsg($('#source-msg'), '');
       await loadMoney(month);
     });
 

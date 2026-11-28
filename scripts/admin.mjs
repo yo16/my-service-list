@@ -28,7 +28,7 @@ import { promisify, parseEnv } from 'node:util';
 import { pickLanguages } from './lib/tags.mjs';
 import { probeSite, readRepoSignals, detectInfra } from './lib/infra.mjs';
 import { validatePayload, sourcesOf, isMonth } from './lib/metrics.mjs';
-import { writeMetrics, MONTHLY_COLUMNS } from './lib/metrics-store.mjs';
+import { writeMetrics, editSources, MONTHLY_COLUMNS } from './lib/metrics-store.mjs';
 
 const execFileP = promisify(execFile);
 
@@ -218,10 +218,7 @@ async function saveMetrics(body) {
     throw err;
   }
 
-  const io = {
-    get: (pathname) => supabase('GET', pathname),
-    upsert: (table, conflict, rows) => supabase('POST', `/${table}?on_conflict=${conflict}`, rows, 'resolution=merge-duplicates,return=minimal'),
-  };
+  const io = metricsIo();
   const total = { service_monthly: 0, shared_monthly_costs: 0 };
   for (const v of validated) {
     try {
@@ -234,6 +231,26 @@ async function saveMetrics(body) {
     }
   }
   return total;
+}
+
+const metricsIo = () => ({
+  get: (pathname) => supabase('GET', pathname),
+  upsert: (table, conflict, rows) => supabase('POST', `/${table}?on_conflict=${conflict}`, rows, 'resolution=merge-duplicates,return=minimal'),
+});
+
+/**
+ * ある月の、取得元 1 つの名前を付け替えるか、取得元 1 つを消す。規則は scripts/lib/metrics-store.mjs にある。
+ * 入力の形: { month, action: 'rename' | 'remove', source, to }
+ */
+async function editMetricSources(body) {
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, '入力の形が不正です');
+  try {
+    return await editSources(metricsIo(), { month: body.month, action: body.action, source: body.source, to: body.to });
+  } catch (e) {
+    if (e.invalid) throw new HttpError(400, e.message);
+    if (e.missingSchema) throw new HttpError(409, SCHEMA_HINT);
+    throw e;
+  }
 }
 
 // 区分の一覧。区分の表と services.category がまだ無い（スキーマを実行する前の）ときは null を返し、
@@ -534,6 +551,9 @@ async function route(req, res) {
   }
   if (req.method === 'POST' && p === '/api/metrics') {
     return send(res, 200, await saveMetrics(await readJson(req)));
+  }
+  if (req.method === 'POST' && p === '/api/metrics/sources') {
+    return send(res, 200, await editMetricSources(await readJson(req)));
   }
   if (req.method === 'GET' && p === '/api/github/repos') {
     return send(res, 200, await listRepos({ refresh: url.searchParams.has('refresh') }));

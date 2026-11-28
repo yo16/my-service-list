@@ -4,7 +4,7 @@
  * 通信そのものは呼び出し側の関数に任せ、ここは「何を読んで、どの表に何を書くか」だけを持つ。
  */
 
-import { mergeMonthly } from './metrics.mjs';
+import { mergeMonthly, editSource, sourcesOf, sourceNameError, isMonth } from './metrics.mjs';
 
 /** service_monthly から読む列。取得元ごとの費用（cost_sources）を重ねるために、今の行を丸ごと読む */
 export const MONTHLY_COLUMNS = 'service_id,month,cost_jpy,revenue_jpy,breakdown,source,cost_sources,updated_at';
@@ -56,4 +56,45 @@ export async function writeMetrics({ get, upsert }, rows) {
   });
 
   return counts;
+}
+
+/**
+ * ある月の、取得元 1 つの名前を付け替えるか、取得元 1 つを消す。その月の、その取得元を持つすべてのサービスの行を書き直す。
+ * 入力の誤りや、付け替え先の名前がすでにある行が 1 つでもあれば、何も書かずに、invalid が true のエラーを投げる。
+ *
+ * @param {{ get: (pathname: string) => Promise<object[]>, upsert: (table: string, conflict: string, rows: object[]) => Promise<unknown> }} io
+ * @param {{ month: string, action: 'rename'|'remove', source: string, to?: string, now?: Date }} edit month は YYYY-MM
+ * @returns {Promise<{ service_monthly: number, cost_jpy: number }>} 書いた行数と、その取得元に入っていた金額の合計
+ */
+export async function editSources({ get, upsert }, { month, action, source, to, now = new Date() }) {
+  const invalid = (message) => Object.assign(new Error(message), { invalid: true });
+  if (!isMonth(month)) throw invalid('月は YYYY-MM の形で指定してください');
+  if (action !== 'rename' && action !== 'remove') throw invalid('操作は rename か remove で指定してください');
+  if (typeof source !== 'string' || !source) throw invalid('取得元を選んでください');
+  let target;
+  if (action === 'rename') {
+    const error = sourceNameError(to);
+    if (error) throw invalid(error);
+    target = to.trim();
+    if (target === source) throw invalid('今と同じ名前です');
+  }
+
+  const existing = await get(`/service_monthly?select=${MONTHLY_COLUMNS}&month=eq.${month}-01`);
+  const holders = existing.filter((r) => Object.prototype.hasOwnProperty.call(sourcesOf(r), source));
+  if (!holders.length) throw invalid(`${month} に、取得元「${source}」の費用はありません`);
+  if (action === 'rename') {
+    const taken = holders.filter((r) => Object.prototype.hasOwnProperty.call(sourcesOf(r), target));
+    if (taken.length) {
+      const ids = taken.map((r) => `#${String(r.service_id).padStart(3, '0')}`).join('、');
+      throw invalid(`付け替え先の名前「${target}」の費用が、すでに入っているサービスがあります（${ids}）。金額が二重にならないよう、どちらかを消してから付け替えてください`);
+    }
+  }
+
+  const updated_at = now.toISOString();
+  const rows = holders.map((r) => editSource(r, { action, source, to: target, updated_at }));
+  await upsert('service_monthly', 'service_id,month', rows);
+  return {
+    service_monthly: rows.length,
+    cost_jpy: holders.reduce((sum, r) => sum + sourcesOf(r)[source].cost_jpy, 0),
+  };
 }
