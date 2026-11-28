@@ -12,6 +12,7 @@
 | git を自律的に操作する | `.claude/rules/git-autonomous.md` | ひとまとまりの作業が完了したら、指示を待たずに add、commit、push する。1 コミットに 1 つの関心ごと。push 済みの履歴は書き換えない |
 | beads でタスクを管理する | `.claude/rules/beads.md` | タスク管理は `bd` で行う。Issue の操作や `.beads/` 配下の変更は裏方の記録として、ユーザーへの報告に書かない |
 | 停止時に git と beads を揃える | `.claude/rules/handoff.md` | ターンを終えるたびに Issue の note と git を現状に合わせる。最後のメッセージには成果と、ユーザーに求めることだけを書く |
+| 切りのいいところで /clear を促す | `.claude/rules/clear-prompt.md` | 作業がひとまとまり完了したら、残タスクがすべて beads にあることと、git に未コミットの変更がないことを確かめ、`/clear` を促す |
 | Small Piece へのリンクに UTM を付ける | `.claude/rules/smallpiece-link.md` | smallpiece.jp へのリンクは `?utm_source=my-service-list&utm_medium=referral` の形にする |
 
 ### このリポジトリ固有の値
