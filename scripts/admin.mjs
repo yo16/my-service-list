@@ -2,7 +2,8 @@
 /* my-service-list: ローカルの登録画面
  *
  * 自分の PC で動く小さな Web サーバー。ブラウザのフォームに入力すると、Supabase の services に
- * 行を追加・更新する。Supabase の secret key は .env から読み、ブラウザには渡さない。
+ * 行を追加・更新する。月ごとの費用と収益、共通の費用も、同じ画面から入れられる。
+ * Supabase の secret key は .env から読み、ブラウザには渡さない。
  * 技術タグは入力しない。同期ジョブが GitHub の Topics と使用言語から取る。
  * Node 22 以上の標準機能だけで動く。npm の依存はない。
  *
@@ -26,6 +27,8 @@ import { randomBytes } from 'node:crypto';
 import { promisify, parseEnv } from 'node:util';
 import { pickLanguages } from './lib/tags.mjs';
 import { probeSite, readRepoSignals, detectInfra } from './lib/infra.mjs';
+import { validatePayload, sourcesOf, isMonth } from './lib/metrics.mjs';
+import { writeMetrics, MONTHLY_COLUMNS } from './lib/metrics-store.mjs';
 
 const execFileP = promisify(execFile);
 
@@ -85,9 +88,9 @@ function supabaseHeaders(extra = {}) {
   return headers;
 }
 
-async function supabase(method, pathname, body) {
+async function supabase(method, pathname, body, prefer = 'return=representation') {
   const base = env('SUPABASE_URL').replace(/\/+$/, '');
-  const extra = body === undefined ? {} : { 'Content-Type': 'application/json', Prefer: 'return=representation' };
+  const extra = body === undefined ? {} : { 'Content-Type': 'application/json', Prefer: prefer };
   const res = await fetch(`${base}/rest/v1${pathname}`, {
     method,
     headers: supabaseHeaders(extra),
@@ -96,15 +99,141 @@ async function supabase(method, pathname, body) {
   const text = await res.text();
   if (!res.ok) {
     let message = text;
+    let code = '';
     try {
       const j = JSON.parse(text);
       message = [j.message, j.details, j.hint].filter(Boolean).join(' / ') || text;
+      code = String(j.code || '');
     } catch {
       /* JSON でなければそのまま */
     }
-    throw new HttpError(502, `Supabase の応答が ${res.status}: ${message}`);
+    const err = new HttpError(502, `Supabase の応答が ${res.status}: ${message}`);
+    // 表が無い（404、PGRST205、42P01）か、あとから足した列が無い（42703、PGRST204）
+    err.missingSchema = res.status === 404 || ['PGRST204', 'PGRST205', '42P01', '42703'].includes(code);
+    throw err;
   }
   return text ? JSON.parse(text) : null;
+}
+
+// ---------- 費用と収益 ----------
+
+const SCHEMA_HINT = '費用と収益の表か、あとから足した列がまだありません。Supabase の SQL Editor で supabase/schema.sql を実行してください（何度実行しても同じ結果になります）';
+const SOURCE_LABELS = { manual: '手入力', import: '取り込み' };
+
+/** その月の、サービスごとの費用（取得元ごと）と収益、共通の費用を読む。フォームに出すための形にする */
+async function readMetrics(month) {
+  if (!isMonth(month)) throw new HttpError(400, '月は YYYY-MM の形で指定してください');
+  const first = `${month}-01`;
+  let monthly;
+  let shared;
+  try {
+    [monthly, shared] = await Promise.all([
+      supabase('GET', `/service_monthly?select=${MONTHLY_COLUMNS}&month=eq.${first}`),
+      supabase('GET', `/shared_monthly_costs?select=provider,account,category,cost_jpy,provisional&month=eq.${first}&order=provider.asc,account.asc`),
+    ]);
+  } catch (e) {
+    if (e.missingSchema) return { month, unavailable: SCHEMA_HINT };
+    throw e;
+  }
+  const services = await supabase('GET', '/services?select=id,name,stage&order=id.asc');
+  return {
+    month,
+    services: services.map((s) => {
+      const row = monthly.find((r) => Number(r.service_id) === s.id) || null;
+      return {
+        id: s.id,
+        name: s.name,
+        stage: s.stage,
+        revenue_jpy: row ? row.revenue_jpy : null,
+        sources: Object.entries(sourcesOf(row)).map(([source, e]) => ({
+          source,
+          cost_jpy: e.cost_jpy,
+          breakdown: e.breakdown || null,
+          provisional: Boolean(e.provisional),
+          updated_at: e.updated_at || null,
+        })),
+      };
+    }),
+    shared,
+  };
+}
+
+/**
+ * フォームの入力を保存する。検証は取り込みのスクリプトと同じ規則（scripts/lib/metrics.mjs）を使い、ここには規則を書かない。
+ * 入力の形: { month, provisional, services: [{ id, source, cost_jpy, breakdown, revenue_jpy }], shared: [{ provider, account, category, cost_jpy }] }
+ * 費用は取得元ごとに持つので、取得元ごとに取り込みの JSON と同じ形へ分けてから、検証して書く。
+ */
+async function saveMetrics(body) {
+  const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+  if (!isObj(body)) throw new HttpError(400, '入力の形が不正です');
+  const entries = body.services === undefined ? [] : body.services;
+  const shared = body.shared === undefined ? [] : body.shared;
+  if (!Array.isArray(entries) || !Array.isArray(shared) || entries.some((e) => !isObj(e))) throw new HttpError(400, '入力の形が不正です');
+  if (!entries.length && !shared.length) throw new HttpError(400, '変更がありません');
+
+  const base = { month: body.month, provisional: body.provisional === undefined ? false : body.provisional };
+  const bySource = new Map();
+  for (const { source = 'manual', ...entry } of entries) {
+    if (typeof source !== 'string') throw new HttpError(400, '取得元の形が不正です');
+    if (!bySource.has(source)) bySource.set(source, []);
+    bySource.get(source).push(entry);
+  }
+  const payloads = [...bySource].map(([source, services]) => ({ ...base, source, services }));
+  if (shared.length) payloads.push({ ...base, shared });
+
+  let serviceIds;
+  let categoryKeys;
+  try {
+    serviceIds = (await supabase('GET', '/services?select=id')).map((r) => r.id);
+    categoryKeys = (await supabase('GET', '/service_categories?select=key')).map((r) => r.key);
+  } catch (e) {
+    if (e.missingSchema) throw new HttpError(409, SCHEMA_HINT);
+    throw e;
+  }
+
+  // エラーの中の位置（services[2].cost_jpy など）を、画面の言葉に直す
+  const describe = (payload, message) => message
+    .replace(/services\[(\d+)\]/g, (_, i) => {
+      const s = payload.services[Number(i)];
+      return `#${String(s && s.id).padStart(3, '0')}（${SOURCE_LABELS[payload.source] || payload.source}）`;
+    })
+    .replace(/shared\[(\d+)\]/g, (_, i) => {
+      const c = payload.shared[Number(i)] || {};
+      return `共通の費用「${c.provider || ''} / ${c.account || ''}」`;
+    })
+    .replace(/\.cost_jpy/g, 'の費用')
+    .replace(/\.revenue_jpy/g, 'の収益')
+    .replace(/\.breakdown/g, 'の内訳')
+    .replace(/\.(provider)/g, 'の請求元')
+    .replace(/\.(account)/g, 'の請求の単位')
+    .replace(/\.(category)/g, 'の区分')
+    .replace(/cost_jpy/g, '費用')
+    .replace(/revenue_jpy/g, '収益');
+
+  const validated = payloads.map((p) => ({ payload: p, ...validatePayload(p, { serviceIds, categoryKeys }) }));
+  const errors = [...new Set(validated.flatMap((v) => v.errors.map((m) => describe(v.payload, m))))];
+  if (errors.length) {
+    const err = new HttpError(400, `入力に ${errors.length} 件の誤りがあります。何も保存していません`);
+    err.details = errors;
+    throw err;
+  }
+
+  const io = {
+    get: (pathname) => supabase('GET', pathname),
+    upsert: (table, conflict, rows) => supabase('POST', `/${table}?on_conflict=${conflict}`, rows, 'resolution=merge-duplicates,return=minimal'),
+  };
+  const total = { service_monthly: 0, shared_monthly_costs: 0 };
+  for (const v of validated) {
+    try {
+      const counts = await writeMetrics(io, v.rows);
+      total.service_monthly += counts.service_monthly;
+      total.shared_monthly_costs += counts.shared_monthly_costs;
+    } catch (e) {
+      if (e.missingSchema) throw new HttpError(409, SCHEMA_HINT);
+      throw new HttpError(502, `保存の途中で失敗しました。もう一度「保存する」を押すと、同じ行が上書きされてそろいます: ${e.message}`);
+    }
+  }
+  return total;
 }
 
 // 区分の一覧。区分の表と services.category がまだ無い（スキーマを実行する前の）ときは null を返し、
@@ -400,6 +529,12 @@ async function route(req, res) {
     if (!Array.isArray(updated) || !updated.length) throw new HttpError(404, `#${m[1]} が見つかりません`);
     return send(res, 200, updated[0]);
   }
+  if (req.method === 'GET' && p === '/api/metrics') {
+    return send(res, 200, await readMetrics((url.searchParams.get('month') || '').trim()));
+  }
+  if (req.method === 'POST' && p === '/api/metrics') {
+    return send(res, 200, await saveMetrics(await readJson(req)));
+  }
   if (req.method === 'GET' && p === '/api/github/repos') {
     return send(res, 200, await listRepos({ refresh: url.searchParams.has('refresh') }));
   }
@@ -439,7 +574,7 @@ async function main() {
     route(req, res).catch((e) => {
       const status = e instanceof HttpError ? e.status : 500;
       if (status >= 500) warn(e.message);
-      send(res, status, { error: e.message });
+      send(res, status, { error: e.message, ...(e.details ? { errors: e.details } : {}) });
     });
   });
   server.on('error', (e) => {
