@@ -337,6 +337,8 @@
     if (section.hidden) return;
 
     const sw = $('#month-switch');
+    // ボタンを作り直すので、キーボードで押したときにフォーカスを失わないよう、あとで戻す
+    const hadFocus = sw.contains(document.activeElement);
     sw.replaceChildren();
     for (const m of MONTHS) {
       sw.append(el('button', {
@@ -346,6 +348,7 @@
         onclick: () => setMonth(m.key),
       }, [m.label, el('span', { class: 'month-name', text: monthName(m.key) })]));
     }
+    if (hadFocus) sw.querySelector('[aria-pressed="true"]').focus();
 
     const services = state.data.services;
     const entered = services.filter((s) => moneyOf(s));
@@ -370,8 +373,29 @@
     figure('差し引き', shown(signedYen(net)), `is-main ${hasAny ? netClass(net) : ''}`);
 
     $('#summary-note').textContent = hasAny
-      ? `${monthName(state.month)} の分。サービス ${services.length} 件のうち ${entered.length} 件に金額が入っています。絞り込みには連動しません。`
+      ? `${monthName(state.month)} の分。サービス ${services.length} 件のうち ${entered.length} 件に金額が入っています。上の合計は絞り込みに連動しません。`
       : `${monthName(state.month)} の金額は、まだ入っていません。`;
+  }
+
+  // 絞り込んでいるときだけ、表に出ているサービスの分の合計を、全体の合計の下に出す。
+  // 共通の費用はサービスに割り振っていないので、ここには含めない
+  function renderFilteredSummary(rows) {
+    const box = $('#summary-filtered');
+    box.hidden = !state.data.months || !isFiltered();
+    if (box.hidden) return;
+    const entered = rows.filter((s) => moneyOf(s));
+    const cost = entered.reduce((sum, s) => sum + moneyOf(s).costJpy, 0);
+    const revenue = entered.reduce((sum, s) => sum + moneyOf(s).revenueJpy, 0);
+    const item = (label, value, cls) => el('span', { class: 'filtered-item' }, [
+      el('span', { class: 'amt-label', text: label }),
+      el('span', { class: `amt-value ${cls || ''}`, text: entered.length ? value : '—' }),
+    ]);
+    box.replaceChildren(
+      el('span', { class: 'filtered-title', text: `絞り込んだ ${rows.length} 件の分（共通の費用を除く）` }),
+      item('費用', yen(cost)),
+      item('収益', yen(revenue)),
+      item('差し引き', signedYen(revenue - cost), entered.length ? netClass(revenue - cost) : ''),
+    );
   }
 
   function renderShared() {
@@ -611,6 +635,7 @@
     $('.table-wrap').hidden = rows.length === 0;
     $('#result-count').textContent = `${rows.length} / ${state.data.services.length} 件を表示`;
     $('#clear-filters').hidden = !isFiltered();
+    renderFilteredSummary(rows);
     for (const s of rows) {
       tbody.append(renderRow(s));
       if (state.expanded.has(s.id)) tbody.append(renderDetail(s));

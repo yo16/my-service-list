@@ -18,6 +18,7 @@
   --ok: #1f9d55;
   --ok-text: #187a42;
   --down: #c5221f;
+  --down-text: #b01e1b; /* 薄い赤の地の上に載せる文字。--down だと 4.5:1 に少し足りない */
   --idle: #85857f;
   --warn-text: #8a5a05;
   --badge-planning-bg: #f1f1ed;  --badge-planning-fg: #5f5f59;
@@ -47,6 +48,7 @@
     --ok: #3fbf74;
     --ok-text: #6fd59a;
     --down: #ff6b5e;
+    --down-text: #ff6b5e;
     --idle: #8f8f89;
     --warn-text: #f0c060;
     --badge-planning-bg: #2a2b28;  --badge-planning-fg: #b5b5ae;
@@ -115,7 +117,7 @@ button { font: inherit; color: inherit; }
 .meta .down-count {
   padding: 1px 8px;
   border-radius: 999px;
-  color: var(--down);
+  color: var(--down-text);
   background: color-mix(in srgb, var(--down) 12%, transparent);
   font-weight: 600;
 }
@@ -292,6 +294,22 @@ button { font: inherit; color: inherit; }
   font-size: 1rem;
 }
 .figure.is-main dd { font-size: 1.3rem; font-weight: 650; }
+/* 絞り込んだ分の合計。全体の合計の下に、小さめに出す */
+.summary-filtered {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 20px;
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 0.87rem;
+}
+.summary-filtered[hidden] { display: none; }
+.summary-filtered .filtered-title { color: var(--muted); }
+.summary-filtered .filtered-item { white-space: nowrap; }
+.summary-filtered .filtered-item .amt-label { margin-right: 6px; }
+.summary-filtered .filtered-item .amt-value { font-variant-numeric: tabular-nums; }
 .summary-note, .shared-note {
   margin: 10px 0 0;
   font-size: 0.8rem;
@@ -414,7 +432,7 @@ td.net .amt-label, td.keys > .amt-label, td.money > .amt-label { display: none; 
   white-space: nowrap;
 }
 .expiry-flag.is-soon { background: var(--badge-paused-bg); color: var(--badge-paused-fg); }
-.expiry-flag.is-expired { background: color-mix(in srgb, var(--down) 12%, transparent); color: var(--down); }
+.expiry-flag.is-expired { background: color-mix(in srgb, var(--down) 12%, transparent); color: var(--down-text); }
 tr.detail .expiry-flag { margin: 0 0 0 8px; }
 .legend .expiry-flag { margin: 0 6px 0 0; }
 
